@@ -211,11 +211,11 @@ impl RawQueryPipeline {
         shape2: &RawShape,
         shapePos2: &RawVector,
         shapeRot2: &RawRotation,
-    ) -> Option<bool> {
+    ) -> bool {
         let pos1 = Isometry::from_parts(shapePos1.0.into(), shapeRot1.0);
         let pos2 = Isometry::from_parts(shapePos2.0.into(), shapeRot2.0);
 
-        query::intersection_test(&pos1, &*shape1, &pos2, &*shape2);
+        query::intersection_test(&pos1, &*shape1.0, &pos2, &*shape2.0).unwrap()
     }
 
     pub fn castShape(
