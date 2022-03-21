@@ -133,11 +133,13 @@ export class RigidBodySet {
      * Gets the rigid-body with the given handle.
      *
      * @param handle - The handle of the rigid-body to retrieve.
-     * @param checkExists - In some cases you might be sure that the body is in the list, so ignore (false) the check for better performance. default true.
      */
-    public get(handle: RigidBodyHandle, checkExists?: boolean): RigidBody {
-        if (checkExists !== false && !this.raw.contains(handle)) return null;
-        return new RigidBody(this, handle);
+    public get(handle: RigidBodyHandle): RigidBody {
+        if (this.raw.contains(handle)) {
+            return new RigidBody(this, handle);
+        } else {
+            return null;
+        }
     }
 
     /**
@@ -147,8 +149,8 @@ export class RigidBodySet {
      */
     public forEachRigidBody(f: (body: RigidBody) => void) {
         this.forEachRigidBodyHandle((handle) => {
-            f(this.get(handle, false));
-        });
+            f(this.get(handle))
+        })
     }
 
     /**
@@ -169,7 +171,7 @@ export class RigidBodySet {
      */
     public forEachActiveRigidBody(islands: IslandManager, f: (body: RigidBody) => void) {
         islands.forEachActiveRigidBodyHandle((handle) => {
-            f(this.get(handle, false));
-        });
+            f(this.get(handle))
+        })
     }
 }
