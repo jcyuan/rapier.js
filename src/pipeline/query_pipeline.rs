@@ -8,6 +8,7 @@ use rapier::geometry::{ColliderHandle, Ray, AABB};
 use rapier::math::{Isometry, Point};
 use rapier::parry::query;
 use rapier::pipeline::QueryPipeline;
+use rapier::prelude::FeatureId;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -138,7 +139,31 @@ impl RawQueryPipeline {
                 crate::geometry::unpack_interaction_groups(groups),
                 None,
             )
-            .map(|(handle, proj)| RawPointColliderProjection { handle, proj })
+            .map(|(handle, proj)| RawPointColliderProjection {
+                handle,
+                proj,
+                feature: FeatureId::Unknown,
+            })
+    }
+
+    pub fn projectPointAndGetFeature(
+        &self,
+        colliders: &RawColliderSet,
+        point: &RawVector,
+        groups: u32,
+    ) -> Option<RawPointColliderProjection> {
+        self.0
+            .project_point_and_get_feature(
+                &colliders.0,
+                &point.0.into(),
+                crate::geometry::unpack_interaction_groups(groups),
+                None,
+            )
+            .map(|(handle, proj, feature)| RawPointColliderProjection {
+                handle,
+                proj,
+                feature,
+            })
     }
 
     // The callback is of type (u32) => bool
@@ -165,15 +190,6 @@ impl RawQueryPipeline {
             rcallback,
         )
     }
-
-    // /// Projects a point on the scene and get
-    // pub fn projectPointAndGetFeature(
-    //     &self,
-    //     colliders: &ColliderSet,
-    //     point: &Point<Real>,
-    //     groups: InteractionGroups,
-    // ) -> Option<(ColliderHandle, PointProjection, FeatureId)> {
-    // }
 
     pub fn sweepBetween(
         &self,
