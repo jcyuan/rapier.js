@@ -5,7 +5,7 @@ import { ShapeTOI } from "./toi";
 
 export abstract class Shape {
     public abstract intoRaw(): RawShape;
-
+  
     public abstract get type(): ShapeType;
 
     /**
