@@ -638,31 +638,6 @@ export class World {
         this.queryPipeline.intersectionsWithPoint(this.colliders, point, groups, callback, filter);
     }
 
-    public sweepBetween(
-        shape1: Shape,
-        shapePos1: Vector,
-        shapeRot1: Rotation,
-        shapeVel1: Vector,
-        shape2: Shape,
-        shapePos2: Vector,
-        shapeRot2: Rotation,
-        shapeVel2: Vector,
-        maxToi: number
-    ): ShapeTOI | null {
-        return this.queryPipeline.sweepBetween(shape1, shapePos1, shapeRot1, shapeVel1, shape2, shapePos2, shapeRot2, shapeVel2, maxToi);
-    }
-
-    public intersectsBetween(
-        shape1: Shape,
-        shapePos1: Vector,
-        shapeRot1: Rotation,
-        shape2: Shape,
-        shapePos2: Vector,
-        shapeRot2: Rotation
-    ): boolean {
-        return this.queryPipeline.intersectsBetween(shape1, shapePos1, shapeRot1, shape2, shapePos2, shapeRot2);
-    }
-
     /**
      * Casts a shape at a constant linear velocity and retrieve the first collider it hits.
      * This is similar to ray-casting except that we are casting a whole shape instead of
