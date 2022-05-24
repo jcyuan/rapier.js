@@ -247,12 +247,14 @@ export class QueryPipeline {
         colliders: ColliderSet,
         point: Vector,
         groups: InteractionGroups,
+        filter?: (collider: ColliderHandle) => boolean
     ): PointColliderProjection | null {
         let rawPoint = VectorOps.intoRaw(point);
         let result = PointColliderProjection.fromRaw(this.raw.projectPointAndGetFeature(
             colliders.raw,
             rawPoint,
             groups,
+            filter
         ));
 
         rawPoint.free();

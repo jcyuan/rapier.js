@@ -616,8 +616,9 @@ export class World {
      public projectPointAndGetFeature(
         point: Vector,
         groups: InteractionGroups,
+        filter?: (collider: ColliderHandle) => boolean
     ): PointColliderProjection | null {
-        return this.queryPipeline.projectPointAndGetFeature(this.colliders, point, groups);
+        return this.queryPipeline.projectPointAndGetFeature(this.colliders, point, groups, filter);
     }
 
     /**
