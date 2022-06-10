@@ -1,95 +1,55 @@
-const webpack = require('webpack');
+const webpack = require("webpack");
 const path = require("path");
 const CopyPlugin = require("copy-webpack-plugin");
 
+const isDev = process.env.NODE_ENV === "development";
 const dist = path.resolve(__dirname, "dist");
 
-const mode = "production";
-
-const appConfig = {
-    mode: mode,
-    entry: "./src/index.js",
-    devServer: {
-        contentBase: dist
+/**
+ * @type {import('webpack-dev-server').Configuration}
+ */
+const devServer = {
+    static: {
+        directory: dist,
     },
-    // plugins: [
-    //     new HtmlWebpackPlugin({
-    //         template: "index.html"
-    //     })
-    // ],
-    resolve: {
-        extensions: [".js"]
-    },
-    output: {
-        path: dist,
-        filename: "index.js"
-    },
-    plugins: [
-        new CopyPlugin([
-            path.resolve(__dirname, "static")
-        ]),
-        new webpack.IgnorePlugin(/(fs)/)
-    ]
+    allowedHosts: "all",
+    compress: true,
 };
 
-const workerConfig = {
-    mode: mode,
-    entry: "./worker/worker.js",
-    target: "webworker",
+/**
+ * @type {import('webpack').Configuration}
+ */
+const webpackConfig = {
+    mode: isDev ? "development" : "production",
+    entry: "./src/index.ts",
+    devtool: "inline-source-map",
+    output: {
+        path: dist,
+        filename: "index.js",
+    },
+    resolve: {
+        extensions: [".ts", ".js"],
+    },
+    devServer,
+    performance: false,
+    experiments: {
+        asyncWebAssembly: true,
+        syncWebAssembly: true,
+    },
+    module: {
+        rules: [
+            {
+                test: /\.tsx?$/,
+                use: "ts-loader",
+                exclude: /node_modules/,
+            },
+        ],
+    },
     plugins: [
-        new webpack.IgnorePlugin(/(fs)/)
+        new CopyPlugin({
+            patterns: [{from: "static", to: dist}],
+        }),
     ],
-    resolve: {
-        extensions: [".js", ".wasm"]
-    },
-    output: {
-        path: dist,
-        filename: "worker.js"
-    }
 };
 
-module.exports = [appConfig, workerConfig];
-
-
-
-
-
-// module.exports = [
-//     'source-map'
-// ].map(devtool => ({
-//     mode: "development",
-//     entry: {
-//         index: "./src/index.js",
-//         worker: "./src/physics.worker.js"
-//     },
-//     // module: {
-//     //     rules: [
-//     //         {
-//     //             test: /physics\.worker\.js$/,
-//     //             use: {
-//     //                 loader: 'worker-loader',
-//     //                 options: {
-//     //                     name: '[name].[hash:8].js',
-//     //                     inline: true,
-//     //                     fallback: false,
-//     //                 }
-//     //             }
-//     //         }
-//     //     ],
-//     // },
-//     output: {
-//         path: dist,
-//         filename: "[name].js",
-//         globalObject: 'this'
-//     },
-//     devServer: {
-//         contentBase: dist,
-//     },
-//     plugins: [
-//         new CopyPlugin([
-//             path.resolve(__dirname, "static")
-//         ]),
-//         new webpack.IgnorePlugin(/(fs)/)
-//     ],
-//     devtool
-// }));
+module.exports = webpackConfig;

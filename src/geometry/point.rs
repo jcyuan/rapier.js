@@ -1,5 +1,7 @@
 use crate::geometry::feature::IntoTypeValue;
+use crate::geometry::RawFeatureType;
 use crate::math::RawVector;
+use crate::utils::{self, FlatHandle};
 use rapier::{
     geometry::{ColliderHandle, PointProjection},
     prelude::FeatureId,
@@ -29,8 +31,8 @@ pub struct RawPointColliderProjection {
 
 #[wasm_bindgen]
 impl RawPointColliderProjection {
-    pub fn colliderHandle(&self) -> u32 {
-        self.handle.into_raw_parts().0
+    pub fn colliderHandle(&self) -> FlatHandle {
+        utils::flat_handle(self.handle.0)
     }
 
     pub fn point(&self) -> RawVector {
@@ -41,8 +43,8 @@ impl RawPointColliderProjection {
         self.proj.is_inside
     }
 
-    pub fn featureType(&self) -> Option<u32> {
-        self.feature.into_type().into()
+    pub fn featureType(&self) -> RawFeatureType {
+        self.feature.into_type()
     }
 
     pub fn featureId(&self) -> Option<u32> {

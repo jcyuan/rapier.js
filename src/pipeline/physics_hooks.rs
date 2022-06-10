@@ -1,3 +1,4 @@
+use crate::utils;
 use rapier::geometry::SolverFlags;
 use rapier::pipeline::{ContactModificationContext, PairFilterContext, PhysicsHooks};
 use wasm_bindgen::prelude::*;
@@ -17,23 +18,23 @@ extern "C" {
     fn log(s: &str);
 }
 
-impl<R, C> PhysicsHooks<R, C> for RawPhysicsHooks {
-    fn filter_contact_pair(&self, ctxt: &PairFilterContext<R, C>) -> Option<SolverFlags> {
+impl PhysicsHooks for RawPhysicsHooks {
+    fn filter_contact_pair(&self, ctxt: &PairFilterContext) -> Option<SolverFlags> {
         let rb1 = ctxt
             .rigid_body1
-            .map(|rb| JsValue::from(rb.into_raw_parts().0))
+            .map(|rb| JsValue::from(utils::flat_handle(rb.0)))
             .unwrap_or(JsValue::NULL);
         let rb2 = ctxt
             .rigid_body2
-            .map(|rb| JsValue::from(rb.into_raw_parts().0))
+            .map(|rb| JsValue::from(utils::flat_handle(rb.0)))
             .unwrap_or(JsValue::NULL);
 
         let result = self
             .filter_contact_pair
             .bind2(
                 &self.this,
-                &JsValue::from(ctxt.collider1.into_raw_parts().0),
-                &JsValue::from(ctxt.collider2.into_raw_parts().0),
+                &JsValue::from(utils::flat_handle(ctxt.collider1.0)),
+                &JsValue::from(utils::flat_handle(ctxt.collider2.0)),
             )
             .call2(&self.this, &rb1, &rb2)
             .ok()?;
@@ -43,21 +44,21 @@ impl<R, C> PhysicsHooks<R, C> for RawPhysicsHooks {
         SolverFlags::from_bits(flags as u32)
     }
 
-    fn filter_intersection_pair(&self, ctxt: &PairFilterContext<R, C>) -> bool {
+    fn filter_intersection_pair(&self, ctxt: &PairFilterContext) -> bool {
         let rb1 = ctxt
             .rigid_body1
-            .map(|rb| JsValue::from(rb.into_raw_parts().0))
+            .map(|rb| JsValue::from(utils::flat_handle(rb.0)))
             .unwrap_or(JsValue::NULL);
         let rb2 = ctxt
             .rigid_body2
-            .map(|rb| JsValue::from(rb.into_raw_parts().0))
+            .map(|rb| JsValue::from(utils::flat_handle(rb.0)))
             .unwrap_or(JsValue::NULL);
 
         self.filter_intersection_pair
             .bind2(
                 &self.this,
-                &JsValue::from(ctxt.collider1.into_raw_parts().0),
-                &JsValue::from(ctxt.collider2.into_raw_parts().0),
+                &JsValue::from(utils::flat_handle(ctxt.collider1.0)),
+                &JsValue::from(utils::flat_handle(ctxt.collider2.0)),
             )
             .call2(&self.this, &rb1, &rb2)
             .ok()
@@ -65,7 +66,7 @@ impl<R, C> PhysicsHooks<R, C> for RawPhysicsHooks {
             .unwrap_or(false)
     }
 
-    fn modify_solver_contacts(&self, _ctxt: &mut ContactModificationContext<R, C>) {}
+    fn modify_solver_contacts(&self, _ctxt: &mut ContactModificationContext) {}
 }
 
 /* NOTE: the following is an attempt to make contact modification work.

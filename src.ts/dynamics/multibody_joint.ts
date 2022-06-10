@@ -1,8 +1,16 @@
-import {RawJointAxis, RawMultibodyJointSet} from "../raw";
+import {RawImpulseJointSet, RawJointAxis, RawMultibodyJointSet} from "../raw";
+import {
+    FixedImpulseJoint,
+    ImpulseJointHandle,
+    JointType,
+    MotorModel,
+    PrismaticImpulseJoint,
+    RevoluteImpulseJoint,
+} from "./impulse_joint";
 
 // #if DIM3
 import {Quaternion} from "../math";
-import {MotorModel} from "./impulse_joint";
+import {SphericalImpulseJoint} from "./impulse_joint";
 // #endif
 
 /**
@@ -17,6 +25,26 @@ export class MultibodyJoint {
     constructor(rawSet: RawMultibodyJointSet, handle: MultibodyJointHandle) {
         this.rawSet = rawSet;
         this.handle = handle;
+    }
+
+    public static newTyped(
+        rawSet: RawMultibodyJointSet,
+        handle: MultibodyJointHandle,
+    ): MultibodyJoint {
+        switch (rawSet.jointType(handle)) {
+            case JointType.Revolute:
+                return new RevoluteMultibodyJoint(rawSet, handle);
+            case JointType.Prismatic:
+                return new PrismaticMultibodyJoint(rawSet, handle);
+            case JointType.Fixed:
+                return new FixedMultibodyJoint(rawSet, handle);
+            // #if DIM3
+            case JointType.Spherical:
+                return new SphericalMultibodyJoint(rawSet, handle);
+            // #endif
+            default:
+                return new MultibodyJoint(rawSet, handle);
+        }
     }
 
     /**
@@ -89,7 +117,6 @@ export class MultibodyJoint {
     // }
 }
 
-
 export class UnitMultibodyJoint extends MultibodyJoint {
     /**
      * The axis left free by this joint.
@@ -134,8 +161,7 @@ export class UnitMultibodyJoint extends MultibodyJoint {
     // }
 }
 
-export class FixedMultibodyJoint extends MultibodyJoint {
-}
+export class FixedMultibodyJoint extends MultibodyJoint {}
 
 export class PrismaticMultibodyJoint extends UnitMultibodyJoint {
     public rawAxis(): RawJointAxis {
@@ -173,4 +199,3 @@ export class SphericalMultibodyJoint extends MultibodyJoint {
      */
 }
 // #endif
-

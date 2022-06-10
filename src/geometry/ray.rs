@@ -1,5 +1,7 @@
 use crate::geometry::feature::IntoTypeValue;
+use crate::geometry::RawFeatureType;
 use crate::math::RawVector;
+use crate::utils::{self, FlatHandle};
 use rapier::geometry::{ColliderHandle, RayIntersection};
 use wasm_bindgen::prelude::*;
 
@@ -16,8 +18,8 @@ impl RawRayIntersection {
         self.0.toi
     }
 
-    pub fn featureType(&self) -> Option<u32> {
-        self.0.feature.into_type().into()
+    pub fn featureType(&self) -> RawFeatureType {
+        self.0.feature.into_type()
     }
 
     pub fn featureId(&self) -> Option<u32> {
@@ -33,8 +35,8 @@ pub struct RawRayColliderIntersection {
 
 #[wasm_bindgen]
 impl RawRayColliderIntersection {
-    pub fn colliderHandle(&self) -> u32 {
-        self.handle.into_raw_parts().0
+    pub fn colliderHandle(&self) -> FlatHandle {
+        utils::flat_handle(self.handle.0)
     }
 
     pub fn normal(&self) -> RawVector {
@@ -45,8 +47,8 @@ impl RawRayColliderIntersection {
         self.inter.toi
     }
 
-    pub fn featureType(&self) -> Option<u32> {
-        self.inter.feature.into_type().into()
+    pub fn featureType(&self) -> RawFeatureType {
+        self.inter.feature.into_type()
     }
 
     pub fn featureId(&self) -> Option<u32> {
@@ -62,8 +64,8 @@ pub struct RawRayColliderToi {
 
 #[wasm_bindgen]
 impl RawRayColliderToi {
-    pub fn colliderHandle(&self) -> u32 {
-        self.handle.into_raw_parts().0
+    pub fn colliderHandle(&self) -> FlatHandle {
+        utils::flat_handle(self.handle.0)
     }
 
     pub fn toi(&self) -> f32 {

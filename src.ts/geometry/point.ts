@@ -1,8 +1,8 @@
-import { ColliderHandle } from "./collider";
-import { Vector, VectorOps } from "../math";
-import { RawPointColliderProjection, RawPointProjection } from "../raw";
-import { FeatureType } from "./feature";
-
+import {Collider, ColliderHandle} from "./collider";
+import {Vector, VectorOps} from "../math";
+import {RawPointColliderProjection, RawPointProjection} from "../raw";
+import {FeatureType} from "./feature";
+import {ColliderSet} from "./collider_set";
 
 /**
  * The projection of a point on a collider.
@@ -11,11 +11,11 @@ export class PointProjection {
     /**
      * The projection of the point on the collider.
      */
-    point: Vector
+    point: Vector;
     /**
      * Is the point inside of the collider?
      */
-    isInside: boolean
+    isInside: boolean;
 
     constructor(point: Vector, isInside: boolean) {
         this.point = point;
@@ -23,12 +23,11 @@ export class PointProjection {
     }
 
     public static fromRaw(raw: RawPointProjection): PointProjection {
-        if (!raw)
-            return null;
+        if (!raw) return null;
 
         const result = new PointProjection(
             VectorOps.fromRaw(raw.point()),
-            raw.isInside()
+            raw.isInside(),
         );
         raw.free();
         return result;
@@ -40,42 +39,54 @@ export class PointProjection {
  */
 export class PointColliderProjection {
     /**
-     * The handle of the collider hit by the ray.
+     * The collider hit by the ray.
      */
-    colliderHandle: ColliderHandle
+    collider: Collider;
     /**
      * The projection of the point on the collider.
      */
-    point: Vector
+    point: Vector;
     /**
      * Is the point inside of the collider?
      */
-    isInside: boolean
+    isInside: boolean;
 
+    /**
+     * The type of the geometric feature the point was projected on.
+     */
     featureType = FeatureType.Unknown;
-    
+
+    /**
+     * The id of the geometric feature the point was projected on.
+     */
     featureId: number | undefined = undefined;
 
-    constructor(colliderHandle: ColliderHandle, point: Vector, isInside: boolean, featureType?: FeatureType, featureId?: number) {
-        this.colliderHandle = colliderHandle;
+    constructor(
+        collider: Collider,
+        point: Vector,
+        isInside: boolean,
+        featureType?: FeatureType,
+        featureId?: number,
+    ) {
+        this.collider = collider;
         this.point = point;
         this.isInside = isInside;
-        if (featureId !== undefined)
-            this.featureId = featureId;
-        if (featureType !== undefined)
-            this.featureType = featureType;
+        if (featureId !== undefined) this.featureId = featureId;
+        if (featureType !== undefined) this.featureType = featureType;
     }
 
-    public static fromRaw(raw: RawPointColliderProjection): PointColliderProjection {
-        if (!raw)
-            return null;
+    public static fromRaw(
+        colliderSet: ColliderSet,
+        raw: RawPointColliderProjection,
+    ): PointColliderProjection {
+        if (!raw) return null;
 
         const result = new PointColliderProjection(
-            raw.colliderHandle(),
+            colliderSet.get(raw.colliderHandle()),
             VectorOps.fromRaw(raw.point()),
             raw.isInside(),
             raw.featureType(),
-            raw.featureId()
+            raw.featureId(),
         );
         raw.free();
         return result;

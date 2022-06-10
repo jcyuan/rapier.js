@@ -1,7 +1,12 @@
-import { Vector, VectorOps } from "../math";
-import { RawRayColliderIntersection, RawRayColliderToi, RawRayIntersection } from "../raw";
-import { ColliderHandle } from "./collider";
-import { FeatureType } from "./feature";
+import {Vector, VectorOps} from "../math";
+import {
+    RawRayColliderIntersection,
+    RawRayColliderToi,
+    RawRayIntersection,
+} from "../raw";
+import {Collider} from "./collider";
+import {FeatureType} from "./feature";
+import {ColliderSet} from "./collider_set";
 
 /**
  * A ray. This is a directed half-line.
@@ -10,11 +15,11 @@ export class Ray {
     /**
      * The starting point of the ray.
      */
-    public origin: Vector
+    public origin: Vector;
     /**
      * The direction of propagation of the ray.
      */
-    public dir: Vector
+    public dir: Vector;
 
     /**
      * Builds a ray from its origin and direction.
@@ -34,10 +39,9 @@ export class Ray {
             // #if DIM3
             z: this.origin.z + this.dir.z * t,
             // #endif
-        }
-    };
+        };
+    }
 }
-
 
 /**
  * The intersection between a ray and a collider.
@@ -48,34 +52,42 @@ export class RayIntersection {
      *
      * The hit point is obtained from the ray's origin and direction: `origin + dir * toi`.
      */
-    toi: number
+    toi: number;
     /**
      * The normal of the collider at the hit point.
      */
-    normal: Vector
+    normal: Vector;
 
+    /**
+     * The type of the geometric feature the point was projected on.
+     */
     featureType = FeatureType.Unknown;
-    
+
+    /**
+     * The id of the geometric feature the point was projected on.
+     */
     featureId: number | undefined = undefined;
 
-    constructor(toi: number, normal: Vector, featureType?: FeatureType, featureId?: number) {
+    constructor(
+        toi: number,
+        normal: Vector,
+        featureType?: FeatureType,
+        featureId?: number,
+    ) {
         this.toi = toi;
         this.normal = normal;
-        if (featureId !== undefined)
-            this.featureId = featureId;
-        if (featureType !== undefined)
-            this.featureType = featureType;
+        if (featureId !== undefined) this.featureId = featureId;
+        if (featureType !== undefined) this.featureType = featureType;
     }
 
     public static fromRaw(raw: RawRayIntersection): RayIntersection {
-        if (!raw)
-            return null;
+        if (!raw) return null;
 
         const result = new RayIntersection(
             raw.toi(),
             VectorOps.fromRaw(raw.normal()),
             raw.featureType(),
-            raw.featureId()
+            raw.featureId(),
         );
         raw.free();
         return result;
@@ -87,44 +99,56 @@ export class RayIntersection {
  */
 export class RayColliderIntersection {
     /**
-     * The handle of the collider hit by the ray.
+     * The collider hit by the ray.
      */
-    colliderHandle: ColliderHandle
+    collider: Collider;
     /**
      * The time-of-impact of the ray with the collider.
      *
      * The hit point is obtained from the ray's origin and direction: `origin + dir * toi`.
      */
-    toi: number
+    toi: number;
     /**
      * The normal of the collider at the hit point.
      */
-    normal: Vector
+    normal: Vector;
 
+    /**
+     * The type of the geometric feature the point was projected on.
+     */
     featureType = FeatureType.Unknown;
-    
+
+    /**
+     * The id of the geometric feature the point was projected on.
+     */
     featureId: number | undefined = undefined;
 
-    constructor(colliderHandle: ColliderHandle, toi: number, normal: Vector, featureType?: FeatureType, featureId?: number) {
-        this.colliderHandle = colliderHandle;
+    constructor(
+        collider: Collider,
+        toi: number,
+        normal: Vector,
+        featureType?: FeatureType,
+        featureId?: number,
+    ) {
+        this.collider = collider;
         this.toi = toi;
         this.normal = normal;
-        if (featureId !== undefined)
-            this.featureId = featureId;
-        if (featureType !== undefined)
-            this.featureType = featureType;
+        if (featureId !== undefined) this.featureId = featureId;
+        if (featureType !== undefined) this.featureType = featureType;
     }
 
-    public static fromRaw(raw: RawRayColliderIntersection): RayColliderIntersection {
-        if (!raw)
-            return null;
+    public static fromRaw(
+        colliderSet: ColliderSet,
+        raw: RawRayColliderIntersection,
+    ): RayColliderIntersection {
+        if (!raw) return null;
 
         const result = new RayColliderIntersection(
-            raw.colliderHandle(),
+            colliderSet.get(raw.colliderHandle()),
             raw.toi(),
             VectorOps.fromRaw(raw.normal()),
             raw.featureType(),
-            raw.featureId()
+            raw.featureId(),
         );
         raw.free();
         return result;
@@ -138,25 +162,27 @@ export class RayColliderToi {
     /**
      * The handle of the collider hit by the ray.
      */
-    colliderHandle: ColliderHandle
+    collider: Collider;
     /**
      * The time-of-impact of the ray with the collider.
      *
      * The hit point is obtained from the ray's origin and direction: `origin + dir * toi`.
      */
-    toi: number
+    toi: number;
 
-    constructor(colliderHandle: ColliderHandle, toi: number) {
-        this.colliderHandle = colliderHandle;
+    constructor(collider: Collider, toi: number) {
+        this.collider = collider;
         this.toi = toi;
     }
 
-    public static fromRaw(raw: RawRayColliderToi): RayColliderToi {
-        if (!raw)
-            return null;
+    public static fromRaw(
+        colliderSet: ColliderSet,
+        raw: RawRayColliderToi,
+    ): RayColliderToi {
+        if (!raw) return null;
 
         const result = new RayColliderToi(
-            raw.colliderHandle(),
+            colliderSet.get(raw.colliderHandle()),
             raw.toi(),
         );
         raw.free();
