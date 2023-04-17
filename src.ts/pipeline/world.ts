@@ -49,11 +49,17 @@ import {
 } from "../dynamics";
 import {Rotation, Vector, VectorOps} from "../math";
 import {PhysicsPipeline} from "./physics_pipeline";
-import {QueryPipeline} from "./query_pipeline";
+import {QueryFilterFlags, QueryPipeline} from "./query_pipeline";
 import {SerializationPipeline} from "./serialization_pipeline";
 import {EventQueue} from "./event_queue";
 import {PhysicsHooks} from "./physics_hooks";
 import {DebugRenderBuffers, DebugRenderPipeline} from "./debug_render_pipeline";
+import {KinematicCharacterController} from "../control";
+import {Coarena} from "../coarena";
+
+// #if DIM3
+import {DynamicRayCastVehicleController} from "../control";
+// #endif
 
 /**
  * The physics world.
@@ -76,6 +82,11 @@ export class World {
     physicsPipeline: PhysicsPipeline;
     serializationPipeline: SerializationPipeline;
     debugRenderPipeline: DebugRenderPipeline;
+    characterControllers: Set<KinematicCharacterController>;
+
+    // #if DIM3
+    vehicleControllers: Set<DynamicRayCastVehicleController>;
+    // #endif
 
     /**
      * Release the WASM memory occupied by this physics world.
@@ -97,6 +108,11 @@ export class World {
         this.physicsPipeline.free();
         this.serializationPipeline.free();
         this.debugRenderPipeline.free();
+        this.characterControllers.forEach((controller) => controller.free());
+
+        // #if DIM3
+        this.vehicleControllers.forEach((controller) => controller.free());
+        // #endif
 
         this.integrationParameters = undefined;
         this.islands = undefined;
@@ -111,6 +127,11 @@ export class World {
         this.physicsPipeline = undefined;
         this.serializationPipeline = undefined;
         this.debugRenderPipeline = undefined;
+        this.characterControllers = undefined;
+
+        // #if DIM3
+        this.vehicleControllers = undefined;
+        // #endif
     }
 
     constructor(
@@ -149,6 +170,11 @@ export class World {
         this.debugRenderPipeline = new DebugRenderPipeline(
             rawDebugRenderPipeline,
         );
+        this.characterControllers = new Set<KinematicCharacterController>();
+
+        // #if DIM3
+        this.vehicleControllers = new Set<DynamicRayCastVehicleController>();
+        // #endif
 
         this.impulseJoints.finalizeDeserialization(this.bodies);
         this.bodies.finalizeDeserialization(this.colliders);
@@ -241,7 +267,30 @@ export class World {
             eventQueue,
             hooks,
         );
-        this.queryPipeline.update(this.islands, this.bodies, this.colliders);
+        this.queryPipeline.update(this.bodies, this.colliders);
+    }
+
+    /**
+     * Update colliders positions after rigid-bodies moved.
+     *
+     * When a rigid-body moves, the positions of the colliders attached to it need to be updated. This update is
+     * generally automatically done at the beginning and the end of each simulation step with World.step.
+     * If the positions need to be updated without running a simulation step this method can be called manually.
+     */
+    public propagateModifiedBodyPositionsToColliders() {
+        this.bodies.raw.propagateModifiedBodyPositionsToColliders(
+            this.colliders.raw,
+        );
+    }
+
+    /**
+     * Ensure subsequent scene queries take into account the collider positions set before this method is called.
+     *
+     * This does not step the physics simulation forward.
+     */
+    public updateSceneQueries() {
+        this.propagateModifiedBodyPositionsToColliders();
+        this.queryPipeline.update(this.bodies, this.colliders);
     }
 
     /**
@@ -330,6 +379,69 @@ export class World {
     public createRigidBody(body: RigidBodyDesc): RigidBody {
         return this.bodies.createRigidBody(this.colliders, body);
     }
+
+    /**
+     * Creates a new character controller.
+     *
+     * @param offset - The artificial gap added between the character’s chape and its environment.
+     */
+    public createCharacterController(
+        offset: number,
+    ): KinematicCharacterController {
+        let controller = new KinematicCharacterController(
+            offset,
+            this.integrationParameters,
+            this.bodies,
+            this.colliders,
+            this.queryPipeline,
+        );
+        this.characterControllers.add(controller);
+        return controller;
+    }
+
+    /**
+     * Removes a character controller from this world.
+     *
+     * @param controller - The character controller to remove.
+     */
+    public removeCharacterController(controller: KinematicCharacterController) {
+        this.characterControllers.delete(controller);
+        controller.free();
+    }
+
+    // #if DIM3
+    /**
+     * Creates a new vehicle controller.
+     *
+     * @param chassis - The rigid-body used as the chassis of the vehicle controller. When the vehicle
+     *                  controller is updated, it will change directly the rigid-body’s velocity. This
+     *                  rigid-body must be a dynamic or kinematic-velocity-based rigid-body.
+     */
+    public createVehicleController(
+        chassis: RigidBody,
+    ): DynamicRayCastVehicleController {
+        let controller = new DynamicRayCastVehicleController(
+            chassis,
+            this.bodies,
+            this.colliders,
+            this.queryPipeline,
+        );
+        this.vehicleControllers.add(controller);
+        return controller;
+    }
+
+    /**
+     * Removes a vehicle controller from this world.
+     *
+     * @param controller - The vehicle controller to remove.
+     */
+    public removeVehicleController(
+        controller: DynamicRayCastVehicleController,
+    ) {
+        this.vehicleControllers.delete(controller);
+        controller.free();
+    }
+    // #endif
 
     /**
      * Creates a new collider.
@@ -531,16 +643,23 @@ export class World {
         ray: Ray,
         maxToi: number,
         solid: boolean,
-        groups: InteractionGroups,
-        filter?: (collider: Collider) => boolean,
+        filterFlags?: QueryFilterFlags,
+        filterGroups?: InteractionGroups,
+        filterExcludeCollider?: Collider,
+        filterExcludeRigidBody?: RigidBody,
+        filterPredicate?: (collider: Collider) => boolean,
     ): RayColliderToi | null {
         return this.queryPipeline.castRay(
+            this.bodies,
             this.colliders,
             ray,
             maxToi,
             solid,
-            groups,
-            castClosure(this.colliders, filter),
+            filterFlags,
+            filterGroups,
+            filterExcludeCollider ? filterExcludeCollider.handle : null,
+            filterExcludeRigidBody ? filterExcludeRigidBody.handle : null,
+            this.colliders.castClosure(filterPredicate),
         );
     }
 
@@ -560,16 +679,23 @@ export class World {
         ray: Ray,
         maxToi: number,
         solid: boolean,
-        groups: InteractionGroups,
-        filter?: (collider: Collider) => boolean,
+        filterFlags?: QueryFilterFlags,
+        filterGroups?: InteractionGroups,
+        filterExcludeCollider?: Collider,
+        filterExcludeRigidBody?: RigidBody,
+        filterPredicate?: (collider: Collider) => boolean,
     ): RayColliderIntersection | null {
         return this.queryPipeline.castRayAndGetNormal(
+            this.bodies,
             this.colliders,
             ray,
             maxToi,
             solid,
-            groups,
-            castClosure(this.colliders, filter),
+            filterFlags,
+            filterGroups,
+            filterExcludeCollider ? filterExcludeCollider.handle : null,
+            filterExcludeRigidBody ? filterExcludeRigidBody.handle : null,
+            this.colliders.castClosure(filterPredicate),
         );
     }
 
@@ -590,18 +716,25 @@ export class World {
         ray: Ray,
         maxToi: number,
         solid: boolean,
-        groups: InteractionGroups,
         callback: (intersect: RayColliderIntersection) => boolean,
-        filter?: (collider: Collider) => boolean,
+        filterFlags?: QueryFilterFlags,
+        filterGroups?: InteractionGroups,
+        filterExcludeCollider?: Collider,
+        filterExcludeRigidBody?: RigidBody,
+        filterPredicate?: (collider: Collider) => boolean,
     ) {
         this.queryPipeline.intersectionsWithRay(
+            this.bodies,
             this.colliders,
             ray,
             maxToi,
             solid,
-            groups,
             callback,
-            castClosure(this.colliders, filter),
+            filterFlags,
+            filterGroups,
+            filterExcludeCollider ? filterExcludeCollider.handle : null,
+            filterExcludeRigidBody ? filterExcludeRigidBody.handle : null,
+            this.colliders.castClosure(filterPredicate),
         );
     }
 
@@ -618,16 +751,23 @@ export class World {
         shapePos: Vector,
         shapeRot: Rotation,
         shape: Shape,
-        groups: InteractionGroups,
-        filter?: (collider: Collider) => boolean,
+        filterFlags?: QueryFilterFlags,
+        filterGroups?: InteractionGroups,
+        filterExcludeCollider?: Collider,
+        filterExcludeRigidBody?: RigidBody,
+        filterPredicate?: (collider: Collider) => boolean,
     ): Collider | null {
         let handle = this.queryPipeline.intersectionWithShape(
+            this.bodies,
             this.colliders,
             shapePos,
             shapeRot,
             shape,
-            groups,
-            castClosure(this.colliders, filter),
+            filterFlags,
+            filterGroups,
+            filterExcludeCollider ? filterExcludeCollider.handle : null,
+            filterExcludeRigidBody ? filterExcludeRigidBody.handle : null,
+            this.colliders.castClosure(filterPredicate),
         );
         return handle != null ? this.colliders.get(handle) : null;
     }
@@ -647,15 +787,22 @@ export class World {
     public projectPoint(
         point: Vector,
         solid: boolean,
-        groups: InteractionGroups,
-        filter?: (collider: Collider) => boolean,
+        filterFlags?: QueryFilterFlags,
+        filterGroups?: InteractionGroups,
+        filterExcludeCollider?: Collider,
+        filterExcludeRigidBody?: RigidBody,
+        filterPredicate?: (collider: Collider) => boolean,
     ): PointColliderProjection | null {
         return this.queryPipeline.projectPoint(
+            this.bodies,
             this.colliders,
             point,
             solid,
-            groups,
-            castClosure(this.colliders, filter),
+            filterFlags,
+            filterGroups,
+            filterExcludeCollider ? filterExcludeCollider.handle : null,
+            filterExcludeRigidBody ? filterExcludeRigidBody.handle : null,
+            this.colliders.castClosure(filterPredicate),
         );
     }
 
@@ -668,14 +815,21 @@ export class World {
      */
     public projectPointAndGetFeature(
         point: Vector,
-        groups: InteractionGroups,
-        filter?: (collider: Collider) => boolean,
+        filterFlags?: QueryFilterFlags,
+        filterGroups?: InteractionGroups,
+        filterExcludeCollider?: Collider,
+        filterExcludeRigidBody?: RigidBody,
+        filterPredicate?: (collider: Collider) => boolean,
     ): PointColliderProjection | null {
         return this.queryPipeline.projectPointAndGetFeature(
+            this.bodies,
             this.colliders,
             point,
-            groups,
-            castClosure(this.colliders, filter),
+            filterFlags,
+            filterGroups,
+            filterExcludeCollider ? filterExcludeCollider.handle : null,
+            filterExcludeRigidBody ? filterExcludeRigidBody.handle : null,
+            this.colliders.castClosure(filterPredicate),
         );
     }
 
@@ -690,16 +844,23 @@ export class World {
      */
     public intersectionsWithPoint(
         point: Vector,
-        groups: InteractionGroups,
         callback: (handle: Collider) => boolean,
-        filter?: (collider: Collider) => boolean,
+        filterFlags?: QueryFilterFlags,
+        filterGroups?: InteractionGroups,
+        filterExcludeCollider?: Collider,
+        filterExcludeRigidBody?: RigidBody,
+        filterPredicate?: (collider: Collider) => boolean,
     ) {
         this.queryPipeline.intersectionsWithPoint(
+            this.bodies,
             this.colliders,
             point,
-            groups,
-            castClosure(this.colliders, callback),
-            castClosure(this.colliders, filter),
+            this.colliders.castClosure(callback),
+            filterFlags,
+            filterGroups,
+            filterExcludeCollider ? filterExcludeCollider.handle : null,
+            filterExcludeRigidBody ? filterExcludeRigidBody.handle : null,
+            this.colliders.castClosure(filterPredicate),
         );
     }
 
@@ -714,6 +875,9 @@ export class World {
      * @param shape - The shape to cast.
      * @param maxToi - The maximum time-of-impact that can be reported by this cast. This effectively
      *   limits the distance traveled by the shape to `shapeVel.norm() * maxToi`.
+     * @param stopAtPenetration - If set to `false`, the linear shape-cast won’t immediately stop if
+     *   the shape is penetrating another shape at its starting point **and** its trajectory is such
+     *   that it’s on a path to exist that penetration state.
      * @param groups - The bit groups and filter associated to the shape to cast, in order to only
      *   test on colliders with collision groups compatible with this group.
      */
@@ -723,18 +887,27 @@ export class World {
         shapeVel: Vector,
         shape: Shape,
         maxToi: number,
-        groups: InteractionGroups,
-        filter?: (collider: Collider) => boolean,
+        stopAtPenetration: boolean,
+        filterFlags?: QueryFilterFlags,
+        filterGroups?: InteractionGroups,
+        filterExcludeCollider?: Collider,
+        filterExcludeRigidBody?: RigidBody,
+        filterPredicate?: (collider: Collider) => boolean,
     ): ShapeColliderTOI | null {
         return this.queryPipeline.castShape(
+            this.bodies,
             this.colliders,
             shapePos,
             shapeRot,
             shapeVel,
             shape,
             maxToi,
-            groups,
-            castClosure(this.colliders, filter),
+            stopAtPenetration,
+            filterFlags,
+            filterGroups,
+            filterExcludeCollider ? filterExcludeCollider.handle : null,
+            filterExcludeRigidBody ? filterExcludeRigidBody.handle : null,
+            this.colliders.castClosure(filterPredicate),
         );
     }
 
@@ -752,18 +925,25 @@ export class World {
         shapePos: Vector,
         shapeRot: Rotation,
         shape: Shape,
-        groups: InteractionGroups,
-        callback: (handle: Collider) => boolean,
-        filter?: (collider: Collider) => boolean,
+        callback: (collider: Collider) => boolean,
+        filterFlags?: QueryFilterFlags,
+        filterGroups?: InteractionGroups,
+        filterExcludeCollider?: Collider,
+        filterExcludeRigidBody?: RigidBody,
+        filterPredicate?: (collider: Collider) => boolean,
     ) {
         this.queryPipeline.intersectionsWithShape(
+            this.bodies,
             this.colliders,
             shapePos,
             shapeRot,
             shape,
-            groups,
-            castClosure(this.colliders, callback),
-            castClosure(this.colliders, filter),
+            this.colliders.castClosure(callback),
+            filterFlags,
+            filterGroups,
+            filterExcludeCollider ? filterExcludeCollider.handle : null,
+            filterExcludeRigidBody ? filterExcludeRigidBody.handle : null,
+            this.colliders.castClosure(filterPredicate),
         );
     }
 
@@ -783,7 +963,7 @@ export class World {
         this.queryPipeline.collidersWithAabbIntersectingAabb(
             aabbCenter,
             aabbHalfExtents,
-            castClosure(this.colliders, callback),
+            this.colliders.castClosure(callback),
         );
     }
 
@@ -796,7 +976,7 @@ export class World {
     public contactsWith(collider1: Collider, f: (collider2: Collider) => void) {
         this.narrowPhase.contactsWith(
             collider1.handle,
-            castClosure(this.colliders, f),
+            this.colliders.castClosure(f),
         );
     }
 
@@ -810,7 +990,7 @@ export class World {
     ) {
         this.narrowPhase.intersectionsWith(
             collider1.handle,
-            castClosure(this.colliders, f),
+            this.colliders.castClosure(f),
         );
     }
 
@@ -842,17 +1022,4 @@ export class World {
             collider2.handle,
         );
     }
-}
-
-function castClosure<Res>(
-    set: ColliderSet,
-    f?: (collider: Collider) => Res,
-): (handle: ColliderHandle) => Res | undefined {
-    return (handle) => {
-        if (!!f) {
-            return f(set.get(handle));
-        } else {
-            return undefined;
-        }
-    };
 }

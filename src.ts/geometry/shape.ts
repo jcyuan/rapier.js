@@ -29,6 +29,7 @@ export abstract class Shape {
         let indices: Uint32Array;
         let halfHeight: number;
         let radius: number;
+        let normal: Vector;
 
         switch (rawType) {
             case ShapeType.Ball:
@@ -126,6 +127,10 @@ export abstract class Shape {
                 );
             // #endif
 
+            case ShapeType.HalfSpace:
+                normal = VectorOps.fromRaw(rawSet.coHalfspaceNormal(handle));
+                return new HalfSpace(normal);
+
             case ShapeType.TriMesh:
                 vs = rawSet.coVertices(handle);
                 indices = rawSet.coIndices(handle);
@@ -199,9 +204,12 @@ export abstract class Shape {
      * @param shapePos2 - The initial position of the second shape.
      * @param shapeRot2 - The rotation of the second shape.
      * @param shapeVel2 - The velocity of the second shape.
-     * @param maxToi - The maximum time when the inpact can happen.
-     * @returns If the two moving shapes collider at some point along their trajectories, this retruns the
-     *  time at which the two shape collider as well as the contact information durning the impact. Returns
+     * @param maxToi - The maximum time when the impact can happen.
+     * @param stopAtPenetration - If set to `false`, the linear shape-cast won’t immediately stop if
+     *   the shape is penetrating another shape at its starting point **and** its trajectory is such
+     *   that it’s on a path to exist that penetration state.
+     * @returns If the two moving shapes collider at some point along their trajectories, this returns the
+     *  time at which the two shape collider as well as the contact information during the impact. Returns
      *  `null`if the two shapes never collide along their paths.
      */
     public castShape(
@@ -213,6 +221,7 @@ export abstract class Shape {
         shapeRot2: Rotation,
         shapeVel2: Vector,
         maxToi: number,
+        stopAtPenetration: boolean,
     ): ShapeTOI | null {
         let rawPos1 = VectorOps.intoRaw(shapePos1);
         let rawRot1 = RotationOps.intoRaw(shapeRot1);
@@ -235,6 +244,7 @@ export abstract class Shape {
                 rawRot2,
                 rawVel2,
                 maxToi,
+                stopAtPenetration,
             ),
         );
 
@@ -499,6 +509,7 @@ export enum ShapeType {
     RoundCuboid = 10,
     RoundTriangle = 11,
     RoundConvexPolygon = 12,
+    HalfSpace = 13,
 }
 
 // #endif
@@ -525,6 +536,7 @@ export enum ShapeType {
     RoundCylinder = 14,
     RoundCone = 15,
     RoundConvexPolyhedron = 16,
+    HalfSpace = 17,
 }
 
 // #endif
@@ -551,6 +563,32 @@ export class Ball extends Shape {
 
     public intoRaw(): RawShape {
         return RawShape.ball(this.radius);
+    }
+}
+
+export class HalfSpace extends Shape {
+    readonly type = ShapeType.HalfSpace;
+
+    /**
+     * The outward normal of the half-space.
+     */
+    normal: Vector;
+
+    /**
+     * Creates a new halfspace delimited by an infinite plane.
+     *
+     * @param normal - The outward normal of the plane.
+     */
+    constructor(normal: Vector) {
+        super();
+        this.normal = normal;
+    }
+
+    public intoRaw(): RawShape {
+        let n = VectorOps.intoRaw(this.normal);
+        let result = RawShape.halfspace(n);
+        n.free();
+        return result;
     }
 }
 

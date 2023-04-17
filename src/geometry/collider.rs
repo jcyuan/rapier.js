@@ -5,8 +5,9 @@ use crate::geometry::{
 };
 use crate::math::{RawRotation, RawVector};
 use crate::utils::{self, FlatHandle};
+use rapier::dynamics::MassProperties;
 use rapier::geometry::{ActiveCollisionTypes, ShapeType};
-use rapier::math::{Isometry, Point};
+use rapier::math::{Isometry, Point, Real, Vector};
 use rapier::parry::query;
 use rapier::pipeline::{ActiveEvents, ActiveHooks};
 use wasm_bindgen::prelude::*;
@@ -80,7 +81,7 @@ impl RawColliderSet {
     #[cfg(feature = "dim3")]
     pub fn coSetRotation(&mut self, handle: FlatHandle, x: f32, y: f32, z: f32, w: f32) {
         if let Some(q) = na::Unit::try_new(na::Quaternion::new(w, x, y, z), 0.0) {
-            self.map_mut(handle, |co| co.set_rotation(q.scaled_axis()))
+            self.map_mut(handle, |co| co.set_rotation(q))
         }
     }
 
@@ -92,7 +93,7 @@ impl RawColliderSet {
     /// wasn't moving before modifying its position.
     #[cfg(feature = "dim2")]
     pub fn coSetRotation(&mut self, handle: FlatHandle, angle: f32) {
-        self.map_mut(handle, |co| co.set_rotation(angle))
+        self.map_mut(handle, |co| co.set_rotation(na::UnitComplex::new(angle)))
     }
 
     #[cfg(feature = "dim3")]
@@ -124,6 +125,7 @@ impl RawColliderSet {
             ShapeType::TriMesh => RawShapeType::TriMesh,
             ShapeType::HeightField => RawShapeType::HeightField,
             ShapeType::Compound => RawShapeType::Compound,
+            ShapeType::HalfSpace => RawShapeType::HalfSpace,
             #[cfg(feature = "dim3")]
             ShapeType::ConvexPolyhedron => RawShapeType::ConvexPolyhedron,
             #[cfg(feature = "dim2")]
@@ -142,7 +144,15 @@ impl RawColliderSet {
             ShapeType::RoundConvexPolyhedron => RawShapeType::RoundConvexPolyhedron,
             #[cfg(feature = "dim2")]
             ShapeType::RoundConvexPolygon => RawShapeType::RoundConvexPolygon,
-            ShapeType::HalfSpace | ShapeType::Custom => panic!("Not yet implemented."),
+            ShapeType::Custom => panic!("Not yet implemented."),
+        })
+    }
+
+    pub fn coHalfspaceNormal(&self, handle: FlatHandle) -> Option<RawVector> {
+        self.map(handle, |co| {
+            co.shape()
+                .as_halfspace()
+                .map(|h| h.normal.into_inner().into())
         })
     }
 
@@ -158,6 +168,21 @@ impl RawColliderSet {
                         .map(|c| c.inner_shape.half_extents.into())
                 })
         })
+    }
+
+    /// Set the half-extents of this collider if it has a cuboid shape.
+    pub fn coSetHalfExtents(&mut self, handle: FlatHandle, newHalfExtents: &RawVector) {
+        self.map_mut(handle, |co| match co.shape().shape_type() {
+            ShapeType::Cuboid => co
+                .shape_mut()
+                .as_cuboid_mut()
+                .map(|b| b.half_extents = newHalfExtents.0.into()),
+            ShapeType::RoundCuboid => co
+                .shape_mut()
+                .as_round_cuboid_mut()
+                .map(|b| b.inner_shape.half_extents = newHalfExtents.0.into()),
+            _ => None,
+        });
     }
 
     /// The radius of this collider if it is a ball, capsule, cylinder, or cone shape.
@@ -177,7 +202,31 @@ impl RawColliderSet {
         })
     }
 
-    /// The radius of this collider if it is a capsule, cylinder, or cone shape.
+    /// Set the radius of this collider if it is a ball, capsule, cylinder, or cone shape.
+    pub fn coSetRadius(&mut self, handle: FlatHandle, newRadius: Real) {
+        self.map_mut(handle, |co| match co.shape().shape_type() {
+            ShapeType::Ball => co.shape_mut().as_ball_mut().map(|b| b.radius = newRadius),
+            ShapeType::Capsule => co
+                .shape_mut()
+                .as_capsule_mut()
+                .map(|b| b.radius = newRadius),
+            #[cfg(feature = "dim3")]
+            ShapeType::Cylinder => co
+                .shape_mut()
+                .as_cylinder_mut()
+                .map(|b| b.radius = newRadius),
+            #[cfg(feature = "dim3")]
+            ShapeType::RoundCylinder => co
+                .shape_mut()
+                .as_round_cylinder_mut()
+                .map(|b| b.inner_shape.radius = newRadius),
+            #[cfg(feature = "dim3")]
+            ShapeType::Cone => co.shape_mut().as_cone_mut().map(|b| b.radius = newRadius),
+            _ => None,
+        });
+    }
+
+    /// The half height of this collider if it is a capsule, cylinder, or cone shape.
     pub fn coHalfHeight(&self, handle: FlatHandle) -> Option<f32> {
         self.map(handle, |co| match co.shape().shape_type() {
             ShapeType::Capsule => co.shape().as_capsule().map(|b| b.half_height()),
@@ -192,6 +241,35 @@ impl RawColliderSet {
             ShapeType::Cone => co.shape().as_cone().map(|b| b.half_height),
             _ => None,
         })
+    }
+
+    /// Set the half height of this collider if it is a capsule, cylinder, or cone shape.
+    pub fn coSetHalfHeight(&mut self, handle: FlatHandle, newHalfheight: Real) {
+        self.map_mut(handle, |co| match co.shape().shape_type() {
+            ShapeType::Capsule => {
+                let point = Point::from(Vector::y() * newHalfheight);
+                co.shape_mut().as_capsule_mut().map(|b| {
+                    b.segment.a = -point;
+                    b.segment.b = point;
+                })
+            }
+            #[cfg(feature = "dim3")]
+            ShapeType::Cylinder => co
+                .shape_mut()
+                .as_cylinder_mut()
+                .map(|b| b.half_height = newHalfheight),
+            #[cfg(feature = "dim3")]
+            ShapeType::RoundCylinder => co
+                .shape_mut()
+                .as_round_cylinder_mut()
+                .map(|b| b.inner_shape.half_height = newHalfheight),
+            #[cfg(feature = "dim3")]
+            ShapeType::Cone => co
+                .shape_mut()
+                .as_cone_mut()
+                .map(|b| b.half_height = newHalfheight),
+            _ => None,
+        });
     }
 
     /// The radius of the round edges of this collider.
@@ -215,6 +293,41 @@ impl RawColliderSet {
                 .map(|b| b.border_radius),
             _ => None,
         })
+    }
+
+    /// Set the radius of the round edges of this collider.
+    pub fn coSetRoundRadius(&mut self, handle: FlatHandle, newBorderRadius: Real) {
+        self.map_mut(handle, |co| match co.shape().shape_type() {
+            ShapeType::RoundCuboid => co
+                .shape_mut()
+                .as_round_cuboid_mut()
+                .map(|b| b.border_radius = newBorderRadius),
+            ShapeType::RoundTriangle => co
+                .shape_mut()
+                .as_round_triangle_mut()
+                .map(|b| b.border_radius = newBorderRadius),
+            #[cfg(feature = "dim3")]
+            ShapeType::RoundCylinder => co
+                .shape_mut()
+                .as_round_cylinder_mut()
+                .map(|b| b.border_radius = newBorderRadius),
+            #[cfg(feature = "dim3")]
+            ShapeType::RoundCone => co
+                .shape_mut()
+                .as_round_cone_mut()
+                .map(|b| b.border_radius = newBorderRadius),
+            #[cfg(feature = "dim3")]
+            ShapeType::RoundConvexPolyhedron => co
+                .shape_mut()
+                .as_round_convex_polyhedron_mut()
+                .map(|b| b.border_radius = newBorderRadius),
+            #[cfg(feature = "dim2")]
+            ShapeType::RoundConvexPolygon => co
+                .shape_mut()
+                .as_round_convex_polygon_mut()
+                .map(|b| b.border_radius = newBorderRadius),
+            _ => None,
+        });
     }
 
     /// The vertices of this triangle mesh, polyline, convex polyhedron, segment, triangle or convex polyhedron, if it is one.
@@ -330,6 +443,14 @@ impl RawColliderSet {
         self.map(handle, |co| co.parent().map(|p| utils::flat_handle(p.0)))
     }
 
+    pub fn coSetEnabled(&mut self, handle: FlatHandle, enabled: bool) {
+        self.map_mut(handle, |co| co.set_enabled(enabled))
+    }
+
+    pub fn coIsEnabled(&self, handle: FlatHandle) -> bool {
+        self.map(handle, |co| co.is_enabled())
+    }
+
     /// The friction coefficient of this collider.
     pub fn coFriction(&self, handle: FlatHandle) -> f32 {
         self.map(handle, |co| co.material().friction)
@@ -340,8 +461,18 @@ impl RawColliderSet {
     }
 
     /// The density of this collider.
-    pub fn coDensity(&self, handle: FlatHandle) -> Option<f32> {
+    pub fn coDensity(&self, handle: FlatHandle) -> f32 {
         self.map(handle, |co| co.density())
+    }
+
+    /// The mass of this collider.
+    pub fn coMass(&self, handle: FlatHandle) -> f32 {
+        self.map(handle, |co| co.mass())
+    }
+
+    /// The volume of this collider.
+    pub fn coVolume(&self, handle: FlatHandle) -> f32 {
+        self.map(handle, |co| co.volume())
     }
 
     /// The collision groups of this collider.
@@ -373,6 +504,11 @@ impl RawColliderSet {
         self.map(handle, |co| co.active_events().bits())
     }
 
+    /// The total force magnitude beyond which a contact force event can be emitted.
+    pub fn coContactForceEventThreshold(&self, handle: FlatHandle) -> f32 {
+        self.map(handle, |co| co.contact_force_event_threshold())
+    }
+
     pub fn coContainsPoint(&self, handle: FlatHandle, point: &RawVector) -> bool {
         self.map(handle, |co| {
             co.shared_shape()
@@ -389,6 +525,7 @@ impl RawColliderSet {
         shape2Rot: &RawRotation,
         shape2Vel: &RawVector,
         maxToi: f32,
+        stop_at_penetration: bool,
     ) -> Option<RawShapeTOI> {
         let pos2 = Isometry::from_parts(shape2Pos.0.into(), shape2Rot.0);
 
@@ -401,6 +538,7 @@ impl RawColliderSet {
                 &pos2,
                 &shape2Vel.0.into(),
                 maxToi,
+                stop_at_penetration,
             )
         })
     }
@@ -412,6 +550,7 @@ impl RawColliderSet {
         collider2handle: FlatHandle,
         collider2Vel: &RawVector,
         max_toi: f32,
+        stop_at_penetration: bool,
     ) -> Option<RawShapeColliderTOI> {
         let handle2 = utils::collider_handle(collider2handle);
         let co2 = self
@@ -428,6 +567,7 @@ impl RawColliderSet {
                 &collider2Vel.0,
                 co2.shape(),
                 max_toi,
+                stop_at_penetration,
             )
             .unwrap_or(None)
             .map_or(None, |toi| {
@@ -619,5 +759,52 @@ impl RawColliderSet {
 
     pub fn coSetShape(&mut self, handle: FlatHandle, shape: &RawShape) {
         self.map_mut(handle, |co| co.set_shape(shape.0.clone()));
+    }
+
+    pub fn coSetContactForceEventThreshold(&mut self, handle: FlatHandle, threshold: f32) {
+        self.map_mut(handle, |co| co.set_contact_force_event_threshold(threshold))
+    }
+
+    pub fn coSetDensity(&mut self, handle: FlatHandle, density: f32) {
+        self.map_mut(handle, |co| co.set_density(density))
+    }
+
+    pub fn coSetMass(&mut self, handle: FlatHandle, mass: f32) {
+        self.map_mut(handle, |co| co.set_mass(mass))
+    }
+
+    #[cfg(feature = "dim3")]
+    pub fn coSetMassProperties(
+        &mut self,
+        handle: FlatHandle,
+        mass: f32,
+        centerOfMass: &RawVector,
+        principalAngularInertia: &RawVector,
+        angularInertiaFrame: &RawRotation,
+    ) {
+        self.map_mut(handle, |co| {
+            let mprops = MassProperties::with_principal_inertia_frame(
+                centerOfMass.0.into(),
+                mass,
+                principalAngularInertia.0,
+                angularInertiaFrame.0,
+            );
+
+            co.set_mass_properties(mprops)
+        })
+    }
+
+    #[cfg(feature = "dim2")]
+    pub fn coSetMassProperties(
+        &mut self,
+        handle: FlatHandle,
+        mass: f32,
+        centerOfMass: &RawVector,
+        principalAngularInertia: f32,
+    ) {
+        self.map_mut(handle, |co| {
+            let props = MassProperties::new(centerOfMass.0.into(), mass, principalAngularInertia);
+            co.set_mass_properties(props)
+        })
     }
 }

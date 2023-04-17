@@ -47,6 +47,32 @@ impl RawImpulseJointSet {
         self.map(handle, |j| j.data.local_frame2.translation.vector.into())
     }
 
+    /// Sets the position of the first local anchor
+    pub fn jointSetAnchor1(&mut self, handle: FlatHandle, newPos: &RawVector) {
+        self.map_mut(handle, |j| {
+            j.data.set_local_anchor1(newPos.0.into());
+        });
+    }
+
+    /// Sets the position of the second local anchor
+    pub fn jointSetAnchor2(&mut self, handle: FlatHandle, newPos: &RawVector) {
+        self.map_mut(handle, |j| {
+            j.data.set_local_anchor2(newPos.0.into());
+        })
+    }
+
+    /// Are contacts between the rigid-bodies attached by this joint enabled?
+    pub fn jointContactsEnabled(&self, handle: FlatHandle) -> bool {
+        self.map(handle, |j| j.data.contacts_enabled)
+    }
+
+    /// Sets whether contacts are enabled between the rigid-bodies attached by this joint.
+    pub fn jointSetContactsEnabled(&mut self, handle: FlatHandle, enabled: bool) {
+        self.map_mut(handle, |j| {
+            j.data.contacts_enabled = enabled;
+        });
+    }
+
     /// Are the limits for this joint enabled?
     pub fn jointLimitsEnabled(&self, handle: FlatHandle, axis: RawJointAxis) -> bool {
         self.map(handle, |j| {
@@ -62,6 +88,13 @@ impl RawImpulseJointSet {
     /// If this is a prismatic joint, returns its upper limit.
     pub fn jointLimitsMax(&self, handle: FlatHandle, axis: RawJointAxis) -> f32 {
         self.map(handle, |j| j.data.limits[axis as usize].max)
+    }
+
+    /// Enables and sets the joint limits
+    pub fn jointSetLimits(&mut self, handle: FlatHandle, axis: RawJointAxis, min: f32, max: f32) {
+        self.map_mut(handle, |j| {
+            j.data.set_limits(axis.into(), [min, max]);
+        });
     }
 
     pub fn jointConfigureMotorModel(
@@ -175,10 +208,8 @@ impl RawImpulseJointSet {
         damping: f32,
     ) {
         self.map_mut(handle, |j| {
-            j.data.motors[axis as usize].target_pos = targetPos;
-            j.data.motors[axis as usize].target_vel = targetVel;
-            j.data.motors[axis as usize].stiffness = stiffness;
-            j.data.motors[axis as usize].damping = damping;
+            j.data
+                .set_motor(axis.into(), targetPos, targetVel, stiffness, damping);
         })
     }
 }

@@ -21,9 +21,14 @@ export class RigidBodySet {
      * Release the WASM memory occupied by this rigid-body set.
      */
     public free() {
-        this.raw.free();
+        if (!!this.raw) {
+            this.raw.free();
+        }
         this.raw = undefined;
-        this.map.clear();
+
+        if (!!this.map) {
+            this.map.clear();
+        }
         this.map = undefined;
     }
 
@@ -70,10 +75,12 @@ export class RigidBodySet {
         // #endif
 
         let handle = this.raw.createRigidBody(
+            desc.enabled,
             rawTra,
             rawRot,
             desc.gravityScale,
             desc.mass,
+            desc.massOnly,
             rawCom,
             rawLv,
             // #if DIM2

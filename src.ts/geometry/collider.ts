@@ -21,6 +21,7 @@ import {
     Triangle,
     RoundTriangle,
     RoundCuboid,
+    HalfSpace,
     // #if DIM2
     ConvexPolygon,
     RoundConvexPolygon,
@@ -40,34 +41,52 @@ import {ShapeColliderTOI, ShapeTOI} from "./toi";
 import {ShapeContact} from "./contact";
 import {ColliderSet} from "./collider_set";
 
-/// Flags affecting whether or not collision-detection happens between two colliders
-/// depending on the type of rigid-bodies they are attached to.
+/**
+ * Flags affecting whether collision-detection happens between two colliders
+ * depending on the type of rigid-bodies they are attached to.
+ */
 export enum ActiveCollisionTypes {
-    /// Enable collision-detection between a collider attached to a dynamic body
-    /// and another collider attached to a dynamic body.
+    /**
+     * Enable collision-detection between a collider attached to a dynamic body
+     * and another collider attached to a dynamic body.
+     */
     DYNAMIC_DYNAMIC = 0b0000_0000_0000_0001,
-    /// Enable collision-detection between a collider attached to a dynamic body
-    /// and another collider attached to a kinematic body.
+    /**
+     * Enable collision-detection between a collider attached to a dynamic body
+     * and another collider attached to a kinematic body.
+     */
     DYNAMIC_KINEMATIC = 0b0000_0000_0000_1100,
-    /// Enable collision-detection between a collider attached to a dynamic body
-    /// and another collider attached to a fixed body (or not attached to any body).
+    /**
+     * Enable collision-detection between a collider attached to a dynamic body
+     * and another collider attached to a fixed body (or not attached to any body).
+     */
     DYNAMIC_FIXED = 0b0000_0000_0000_0010,
-    /// Enable collision-detection between a collider attached to a kinematic body
-    /// and another collider attached to a kinematic body.
+    /**
+     * Enable collision-detection between a collider attached to a kinematic body
+     * and another collider attached to a kinematic body.
+     */
     KINEMATIC_KINEMATIC = 0b1100_1100_0000_0000,
 
-    /// Enable collision-detection between a collider attached to a kinematic body
-    /// and another collider attached to a fixed body (or not attached to any body).
+    /**
+     * Enable collision-detection between a collider attached to a kinematic body
+     * and another collider attached to a fixed body (or not attached to any body).
+     */
     KINEMATIC_FIXED = 0b0010_0010_0000_0000,
 
-    /// Enable collision-detection between a collider attached to a fixed body (or
-    /// not attached to any body) and another collider attached to a fixed body (or
-    /// not attached to any body).
+    /**
+     * Enable collision-detection between a collider attached to a fixed body (or
+     * not attached to any body) and another collider attached to a fixed body (or
+     * not attached to any body).
+     */
     FIXED_FIXED = 0b0000_0000_0010_0000,
-    /// The default active collision types, enabling collisions between a dynamic body
-    /// and another body of any type, but not enabling collisions between two non-dynamic bodies.
+    /**
+     * The default active collision types, enabling collisions between a dynamic body
+     * and another body of any type, but not enabling collisions between two non-dynamic bodies.
+     */
     DEFAULT = DYNAMIC_KINEMATIC | DYNAMIC_DYNAMIC | DYNAMIC_FIXED,
-    /// Enable collisions between any kind of rigid-bodies (including between two non-dynamic bodies).
+    /**
+     * Enable collisions between any kind of rigid-bodies (including between two non-dynamic bodies).
+     */
     ALL = DYNAMIC_KINEMATIC |
         DYNAMIC_DYNAMIC |
         DYNAMIC_FIXED |
@@ -175,6 +194,22 @@ export class Collider {
         this.colliderSet.raw.coSetShape(this.handle, rawShape);
         rawShape.free();
         this._shape = shape;
+    }
+
+    /**
+     * Sets whether this collider is enabled or not.
+     *
+     * @param enabled - Set to `false` to disable this collider (its parent rigid-body won’t be disabled automatically by this).
+     */
+    public setEnabled(enabled: boolean) {
+        this.colliderSet.raw.coSetEnabled(this.handle, enabled);
+    }
+
+    /**
+     * Is this collider enabled?
+     */
+    public isEnabled(): boolean {
+        return this.colliderSet.raw.coIsEnabled(this.handle);
     }
 
     /**
@@ -304,6 +339,25 @@ export class Collider {
     }
 
     /**
+     * Sets the total force magnitude beyond which a contact force event can be emitted.
+     *
+     * @param threshold - The new force threshold.
+     */
+    public setContactForceEventThreshold(threshold: number) {
+        return this.colliderSet.raw.coSetContactForceEventThreshold(
+            this.handle,
+            threshold,
+        );
+    }
+
+    /**
+     * The total force magnitude beyond which a contact force event can be emitted.
+     */
+    public contactForceEventThreshold(): number {
+        return this.colliderSet.raw.coContactForceEventThreshold(this.handle);
+    }
+
+    /**
      * Set the collision types active for this collider.
      *
      * @param activeCollisionTypes - The hooks active for contact/intersection pairs involving this collider.
@@ -314,6 +368,90 @@ export class Collider {
             activeCollisionTypes,
         );
     }
+
+    /**
+     * Sets the uniform density of this collider.
+     *
+     * This will override any previous mass-properties set by `this.setDensity`,
+     * `this.setMass`, `this.setMassProperties`, `ColliderDesc.density`,
+     * `ColliderDesc.mass`, or `ColliderDesc.massProperties` for this collider.
+     *
+     * The mass and angular inertia of this collider will be computed automatically based on its
+     * shape.
+     */
+    public setDensity(density: number) {
+        this.colliderSet.raw.coSetDensity(this.handle, density);
+    }
+
+    /**
+     * Sets the mass of this collider.
+     *
+     * This will override any previous mass-properties set by `this.setDensity`,
+     * `this.setMass`, `this.setMassProperties`, `ColliderDesc.density`,
+     * `ColliderDesc.mass`, or `ColliderDesc.massProperties` for this collider.
+     *
+     * The angular inertia of this collider will be computed automatically based on its shape
+     * and this mass value.
+     */
+    public setMass(mass: number) {
+        this.colliderSet.raw.coSetMass(this.handle, mass);
+    }
+
+    // #if DIM3
+    /**
+     * Sets the mass of this collider.
+     *
+     * This will override any previous mass-properties set by `this.setDensity`,
+     * `this.setMass`, `this.setMassProperties`, `ColliderDesc.density`,
+     * `ColliderDesc.mass`, or `ColliderDesc.massProperties` for this collider.
+     */
+    public setMassProperties(
+        mass: number,
+        centerOfMass: Vector,
+        principalAngularInertia: Vector,
+        angularInertiaLocalFrame: Rotation,
+    ) {
+        let rawCom = VectorOps.intoRaw(centerOfMass);
+        let rawPrincipalInertia = VectorOps.intoRaw(principalAngularInertia);
+        let rawInertiaFrame = RotationOps.intoRaw(angularInertiaLocalFrame);
+
+        this.colliderSet.raw.coSetMassProperties(
+            this.handle,
+            mass,
+            rawCom,
+            rawPrincipalInertia,
+            rawInertiaFrame,
+        );
+
+        rawCom.free();
+        rawPrincipalInertia.free();
+        rawInertiaFrame.free();
+    }
+    // #endif
+
+    // #if DIM2
+    /**
+     * Sets the mass of this collider.
+     *
+     * This will override any previous mass-properties set by `this.setDensity`,
+     * `this.setMass`, `this.setMassProperties`, `ColliderDesc.density`,
+     * `ColliderDesc.mass`, or `ColliderDesc.massProperties` for this collider.
+     */
+    public setMassProperties(
+        mass: number,
+        centerOfMass: Vector,
+        principalAngularInertia: number,
+    ) {
+        let rawCom = VectorOps.intoRaw(centerOfMass);
+        this.colliderSet.raw.coSetMassProperties(
+            this.handle,
+            mass,
+            rawCom,
+            principalAngularInertia,
+        );
+        rawCom.free();
+    }
+    // #endif
 
     /**
      * Sets the translation of this collider.
@@ -431,11 +569,30 @@ export class Collider {
     }
 
     /**
+     * Sets the half-extents of this collider if it is a cuboid shape.
+     *
+     * @param newHalfExtents - desired half extents.
+     */
+    public setHalfExtents(newHalfExtents: Vector) {
+        const rawPoint = VectorOps.intoRaw(newHalfExtents);
+        this.colliderSet.raw.coSetHalfExtents(this.handle, rawPoint);
+    }
+
+    /**
      * The radius of this collider if it is a ball, cylinder, capsule, or cone shape.
      * @deprecated this field will be removed in the future, please access this field on `shape` member instead.
      */
     public radius(): number {
         return this.colliderSet.raw.coRadius(this.handle);
+    }
+
+    /**
+     * Sets the radius of this collider if it is a ball, cylinder, capsule, or cone shape.
+     *
+     * @param newRadius - desired radius.
+     */
+    public setRadius(newRadius: number): void {
+        this.colliderSet.raw.coSetRadius(this.handle, newRadius);
     }
 
     /**
@@ -447,11 +604,29 @@ export class Collider {
     }
 
     /**
+     * Sets the radius of the round edges of this collider if it has round edges.
+     *
+     * @param newBorderRadius - desired round edge radius.
+     */
+    public setRoundRadius(newBorderRadius: number) {
+        this.colliderSet.raw.coSetRoundRadius(this.handle, newBorderRadius);
+    }
+
+    /**
      * The half height of this collider if it is a cylinder, capsule, or cone shape.
      * @deprecated this field will be removed in the future, please access this field on `shape` member instead.
      */
     public halfHeight(): number {
         return this.colliderSet.raw.coHalfHeight(this.handle);
+    }
+
+    /**
+     * Sets the half height of this collider if it is a cylinder, capsule, or cone shape.
+     *
+     * @param newHalfheight - desired half height.
+     */
+    public setHalfHeight(newHalfheight: number) {
+        this.colliderSet.raw.coSetHalfHeight(this.handle, newHalfheight);
     }
 
     /**
@@ -542,6 +717,20 @@ export class Collider {
     }
 
     /**
+     * The mass of this collider.
+     */
+    public mass(): number {
+        return this.colliderSet.raw.coMass(this.handle);
+    }
+
+    /**
+     * The volume of this collider.
+     */
+    public volume(): number {
+        return this.colliderSet.raw.coVolume(this.handle);
+    }
+
+    /**
      * The collision groups of this collider.
      */
     public collisionGroups(): InteractionGroups {
@@ -626,6 +815,9 @@ export class Collider {
      * @param shape2Vel - The constant velocity of the second shape.
      * @param maxToi - The maximum time-of-impact that can be reported by this cast. This effectively
      *   limits the distance traveled by the shape to `collider1Vel.norm() * maxToi`.
+     * @param stopAtPenetration - If set to `false`, the linear shape-cast won’t immediately stop if
+     *   the shape is penetrating another shape at its starting point **and** its trajectory is such
+     *   that it’s on a path to exist that penetration state.
      */
     public castShape(
         collider1Vel: Vector,
@@ -634,6 +826,7 @@ export class Collider {
         shape2Rot: Rotation,
         shape2Vel: Vector,
         maxToi: number,
+        stopAtPenetration: boolean,
     ): ShapeTOI | null {
         let rawCollider1Vel = VectorOps.intoRaw(collider1Vel);
         let rawShape2Pos = VectorOps.intoRaw(shape2Pos);
@@ -651,6 +844,7 @@ export class Collider {
                 rawShape2Rot,
                 rawShape2Vel,
                 maxToi,
+                stopAtPenetration,
             ),
         );
 
@@ -671,12 +865,16 @@ export class Collider {
      * @param collider2Vel - The constant velocity of the second collider.
      * @param maxToi - The maximum time-of-impact that can be reported by this cast. This effectively
      *   limits the distance traveled by the shape to `shapeVel.norm() * maxToi`.
+     * @param stopAtPenetration - If set to `false`, the linear shape-cast won’t immediately stop if
+     *   the shape is penetrating another shape at its starting point **and** its trajectory is such
+     *   that it’s on a path to exist that penetration state.
      */
     public castCollider(
         collider1Vel: Vector,
         collider2: Collider,
         collider2Vel: Vector,
         maxToi: number,
+        stopAtPenetration: boolean,
     ): ShapeColliderTOI | null {
         let rawCollider1Vel = VectorOps.intoRaw(collider1Vel);
         let rawCollider2Vel = VectorOps.intoRaw(collider2Vel);
@@ -689,6 +887,7 @@ export class Collider {
                 collider2.handle,
                 rawCollider2Vel,
                 maxToi,
+                stopAtPenetration,
             ),
         );
 
@@ -843,9 +1042,16 @@ export class Collider {
     }
 }
 
+export enum MassPropsMode {
+    Density,
+    Mass,
+    MassProps,
+}
+
 export class ColliderDesc {
+    enabled: boolean;
     shape: Shape;
-    useMassProps: boolean;
+    massPropsMode: MassPropsMode;
     mass: number;
     centerOfMass: Vector;
     // #if DIM2
@@ -869,6 +1075,7 @@ export class ColliderDesc {
     activeEvents: ActiveEvents;
     activeHooks: ActiveHooks;
     activeCollisionTypes: ActiveCollisionTypes;
+    contactForceEventThreshold: number;
 
     /**
      * Initializes a collider descriptor from the collision shape.
@@ -876,8 +1083,9 @@ export class ColliderDesc {
      * @param shape - The shape of the collider being built.
      */
     constructor(shape: Shape) {
+        this.enabled = true;
         this.shape = shape;
-        this.useMassProps = false;
+        this.massPropsMode = MassPropsMode.Density;
         this.density = 1.0;
         this.friction = 0.5;
         this.restitution = 0.0;
@@ -893,6 +1101,8 @@ export class ColliderDesc {
         this.activeHooks = 0;
         this.mass = 0.0;
         this.centerOfMass = VectorOps.zeros();
+        this.contactForceEventThreshold = 0.0;
+
         // #if DIM2
         this.principalAngularInertia = 0.0;
         this.rotationsEnabled = true;
@@ -1020,6 +1230,16 @@ export class ColliderDesc {
         borderRadius: number,
     ): ColliderDesc {
         const shape = new RoundCuboid(hx, hy, borderRadius);
+        return new ColliderDesc(shape);
+    }
+
+    /**
+     * Creates a new collider description with a halfspace (infinite plane) shape.
+     *
+     * @param normal - The outward normal of the plane.
+     */
+    public static halfspace(normal: Vector): ColliderDesc {
+        const shape = new HalfSpace(normal);
         return new ColliderDesc(shape);
     }
 
@@ -1297,7 +1517,12 @@ export class ColliderDesc {
      * @param rot - The rotation of the collider to be created relative to the rigid-body it is attached to.
      */
     public setRotation(rot: Rotation): ColliderDesc {
+        // #if DIM2
         this.rotation = rot;
+        // #endif
+        // #if DIM3
+        RotationOps.copy(this.rotation, rot);
+        // #endif
         return this;
     }
 
@@ -1307,22 +1532,46 @@ export class ColliderDesc {
      * A sensor collider does not take part of the physics simulation, but generates
      * proximity events.
      *
-     * @param is - Set to `true` of the collider built is to be a sensor.
+     * @param sensor - Set to `true` of the collider built is to be a sensor.
      */
-    public setSensor(is: boolean): ColliderDesc {
-        this.isSensor = is;
+    public setSensor(sensor: boolean): ColliderDesc {
+        this.isSensor = sensor;
+        return this;
+    }
+
+    /**
+     * Sets whether the created collider will be enabled or disabled.
+     * @param enabled − If set to `false` the collider will be disabled at creation.
+     */
+    public setEnabled(enabled: boolean): ColliderDesc {
+        this.enabled = enabled;
         return this;
     }
 
     /**
      * Sets the density of the collider being built.
      *
+     * The mass and angular inertia tensor will be computed automatically based on this density and the collider’s shape.
+     *
      * @param density - The density to set, must be greater or equal to 0. A density of 0 means that this collider
      *                  will not affect the mass or angular inertia of the rigid-body it is attached to.
      */
     public setDensity(density: number): ColliderDesc {
-        this.useMassProps = false;
+        this.massPropsMode = MassPropsMode.Density;
         this.density = density;
+        return this;
+    }
+
+    /**
+     * Sets the mass of the collider being built.
+     *
+     * The angular inertia tensor will be computed automatically based on this mass and the collider’s shape.
+     *
+     * @param mass - The mass to set, must be greater or equal to 0.
+     */
+    public setMass(mass: number): ColliderDesc {
+        this.massPropsMode = MassPropsMode.Mass;
+        this.mass = mass;
         return this;
     }
 
@@ -1342,9 +1591,9 @@ export class ColliderDesc {
         centerOfMass: Vector,
         principalAngularInertia: number,
     ): ColliderDesc {
-        this.useMassProps = true;
+        this.massPropsMode = MassPropsMode.MassProps;
         this.mass = mass;
-        this.centerOfMass = centerOfMass;
+        VectorOps.copy(this.centerOfMass, centerOfMass);
         this.principalAngularInertia = principalAngularInertia;
         return this;
     }
@@ -1370,11 +1619,14 @@ export class ColliderDesc {
         principalAngularInertia: Vector,
         angularInertiaLocalFrame: Rotation,
     ): ColliderDesc {
-        this.useMassProps = true;
+        this.massPropsMode = MassPropsMode.MassProps;
         this.mass = mass;
-        this.centerOfMass = centerOfMass;
-        this.principalAngularInertia = principalAngularInertia;
-        this.angularInertiaLocalFrame = angularInertiaLocalFrame;
+        VectorOps.copy(this.centerOfMass, centerOfMass);
+        VectorOps.copy(this.principalAngularInertia, principalAngularInertia);
+        RotationOps.copy(
+            this.angularInertiaLocalFrame,
+            angularInertiaLocalFrame,
+        );
         return this;
     }
     // #endif
@@ -1487,6 +1739,16 @@ export class ColliderDesc {
         activeCollisionTypes: ActiveCollisionTypes,
     ): ColliderDesc {
         this.activeCollisionTypes = activeCollisionTypes;
+        return this;
+    }
+
+    /**
+     * Sets the total force magnitude beyond which a contact force event can be emitted.
+     *
+     * @param threshold - The force threshold to set.
+     */
+    public setContactForceEventThreshold(threshold: number): ColliderDesc {
+        this.contactForceEventThreshold = threshold;
         return this;
     }
 }

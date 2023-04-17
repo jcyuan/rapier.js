@@ -1,11 +1,11 @@
-const {base64} = require("rollup-plugin-base64");
-import {terser} from "rollup-plugin-terser";
-import {nodeResolve} from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
+import {nodeResolve} from "@rollup/plugin-node-resolve";
 import typescript from "@rollup/plugin-typescript";
-import filesize from "rollup-plugin-filesize";
-import copy from "rollup-plugin-copy";
+import terser from "@rollup/plugin-terser";
 import path from "path";
+import {base64} from "rollup-plugin-base64";
+import copy from "rollup-plugin-copy";
+import filesize from "rollup-plugin-filesize";
 
 const config = (dim) => ({
     input: `./gen${dim}/rapier.ts`,
@@ -27,7 +27,7 @@ const config = (dim) => ({
         copy({
             targets: [
                 {
-                    src: `../rapier${dim}/pkg/package.json`,
+                    src: `./wasm-build${dim}/package.json`,
                     dest: `./pkg${dim}/`,
                     transform(content) {
                         let config = JSON.parse(content.toString());
@@ -58,7 +58,6 @@ const config = (dim) => ({
         commonjs(),
         typescript({
             tsconfig: path.resolve(__dirname, `tsconfig.pkg${dim}.json`),
-            include: [`./gen${dim}/**/*.ts`, `./src${dim}/*`],
             sourceMap: true,
             inlineSources: true,
         }),

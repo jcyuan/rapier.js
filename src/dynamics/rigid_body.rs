@@ -1,6 +1,10 @@
 use crate::dynamics::{RawRigidBodySet, RawRigidBodyType};
+use crate::geometry::RawColliderSet;
+#[cfg(feature = "dim3")]
+use crate::math::RawSdpMatrix3;
 use crate::math::{RawRotation, RawVector};
 use crate::utils::{self, FlatHandle};
+use rapier::dynamics::MassProperties;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -101,7 +105,7 @@ impl RawRigidBodySet {
         wakeUp: bool,
     ) {
         if let Some(q) = na::Unit::try_new(na::Quaternion::new(w, x, y, z), 0.0) {
-            self.map_mut(handle, |rb| rb.set_rotation(q.scaled_axis(), wakeUp))
+            self.map_mut(handle, |rb| rb.set_rotation(q, wakeUp))
         }
     }
 
@@ -113,7 +117,9 @@ impl RawRigidBodySet {
     /// wasn't moving before modifying its position.
     #[cfg(feature = "dim2")]
     pub fn rbSetRotation(&mut self, handle: FlatHandle, angle: f32, wakeUp: bool) {
-        self.map_mut(handle, |rb| rb.set_rotation(angle, wakeUp))
+        self.map_mut(handle, |rb| {
+            rb.set_rotation(na::UnitComplex::new(angle), wakeUp)
+        })
     }
 
     /// Sets the linear velocity of this rigid-body.
@@ -200,7 +206,7 @@ impl RawRigidBodySet {
     ) {
         if let Some(q) = na::Unit::try_new(na::Quaternion::new(w, x, y, z), 0.0) {
             self.map_mut(handle, |rb| {
-                rb.set_next_kinematic_rotation(q.scaled_axis());
+                rb.set_next_kinematic_rotation(q);
             })
         }
     }
@@ -218,7 +224,59 @@ impl RawRigidBodySet {
     #[cfg(feature = "dim2")]
     pub fn rbSetNextKinematicRotation(&mut self, handle: FlatHandle, angle: f32) {
         self.map_mut(handle, |rb| {
-            rb.set_next_kinematic_rotation(angle);
+            rb.set_next_kinematic_rotation(na::UnitComplex::new(angle));
+        })
+    }
+
+    pub fn rbRecomputeMassPropertiesFromColliders(
+        &mut self,
+        handle: FlatHandle,
+        colliders: &RawColliderSet,
+    ) {
+        self.map_mut(handle, |rb| {
+            rb.recompute_mass_properties_from_colliders(&colliders.0)
+        })
+    }
+
+    pub fn rbSetAdditionalMass(&mut self, handle: FlatHandle, mass: f32, wake_up: bool) {
+        self.map_mut(handle, |rb| {
+            rb.set_additional_mass(mass, wake_up);
+        })
+    }
+
+    #[cfg(feature = "dim3")]
+    pub fn rbSetAdditionalMassProperties(
+        &mut self,
+        handle: FlatHandle,
+        mass: f32,
+        centerOfMass: &RawVector,
+        principalAngularInertia: &RawVector,
+        angularInertiaFrame: &RawRotation,
+        wake_up: bool,
+    ) {
+        self.map_mut(handle, |rb| {
+            let mprops = MassProperties::with_principal_inertia_frame(
+                centerOfMass.0.into(),
+                mass,
+                principalAngularInertia.0,
+                angularInertiaFrame.0,
+            );
+            rb.set_additional_mass_properties(mprops, wake_up)
+        })
+    }
+
+    #[cfg(feature = "dim2")]
+    pub fn rbSetAdditionalMassProperties(
+        &mut self,
+        handle: FlatHandle,
+        mass: f32,
+        centerOfMass: &RawVector,
+        principalAngularInertia: f32,
+        wake_up: bool,
+    ) {
+        self.map_mut(handle, |rb| {
+            let props = MassProperties::new(centerOfMass.0.into(), mass, principalAngularInertia);
+            rb.set_additional_mass_properties(props, wake_up)
         })
     }
 
@@ -244,7 +302,7 @@ impl RawRigidBodySet {
     }
 
     #[cfg(feature = "dim2")]
-    pub fn rbRestrictTranslations(
+    pub fn rbSetEnabledTranslations(
         &mut self,
         handle: FlatHandle,
         allow_x: bool,
@@ -252,12 +310,12 @@ impl RawRigidBodySet {
         wake_up: bool,
     ) {
         self.map_mut(handle, |rb| {
-            rb.restrict_translations(allow_x, allow_y, wake_up)
+            rb.set_enabled_translations(allow_x, allow_y, wake_up)
         })
     }
 
     #[cfg(feature = "dim3")]
-    pub fn rbRestrictTranslations(
+    pub fn rbSetEnabledTranslations(
         &mut self,
         handle: FlatHandle,
         allow_x: bool,
@@ -266,7 +324,7 @@ impl RawRigidBodySet {
         wake_up: bool,
     ) {
         self.map_mut(handle, |rb| {
-            rb.restrict_translations(allow_x, allow_y, allow_z, wake_up)
+            rb.set_enabled_translations(allow_x, allow_y, allow_z, wake_up)
         })
     }
 
@@ -275,7 +333,7 @@ impl RawRigidBodySet {
     }
 
     #[cfg(feature = "dim3")]
-    pub fn rbRestrictRotations(
+    pub fn rbSetEnabledRotations(
         &mut self,
         handle: FlatHandle,
         allow_x: bool,
@@ -284,7 +342,7 @@ impl RawRigidBodySet {
         wake_up: bool,
     ) {
         self.map_mut(handle, |rb| {
-            rb.restrict_rotations(allow_x, allow_y, allow_z, wake_up)
+            rb.set_enabled_rotations(allow_x, allow_y, allow_z, wake_up)
         })
     }
 
@@ -303,6 +361,120 @@ impl RawRigidBodySet {
     /// The mass of this rigid-body.
     pub fn rbMass(&self, handle: FlatHandle) -> f32 {
         self.map(handle, |rb| rb.mass())
+    }
+
+    /// The inverse of the mass of a rigid-body.
+    ///
+    /// If this is zero, the rigid-body is assumed to have infinite mass.
+    pub fn rbInvMass(&self, handle: FlatHandle) -> f32 {
+        self.map(handle, |rb| rb.mass_properties().local_mprops.inv_mass)
+    }
+
+    /// The inverse mass taking into account translation locking.
+    pub fn rbEffectiveInvMass(&self, handle: FlatHandle) -> RawVector {
+        self.map(handle, |rb| rb.mass_properties().effective_inv_mass.into())
+    }
+
+    /// The center of mass of a rigid-body expressed in its local-space.
+    pub fn rbLocalCom(&self, handle: FlatHandle) -> RawVector {
+        self.map(handle, |rb| {
+            rb.mass_properties().local_mprops.local_com.into()
+        })
+    }
+
+    /// The world-space center of mass of the rigid-body.
+    pub fn rbWorldCom(&self, handle: FlatHandle) -> RawVector {
+        self.map(handle, |rb| rb.mass_properties().world_com.into())
+    }
+
+    /// The inverse of the principal angular inertia of the rigid-body.
+    ///
+    /// Components set to zero are assumed to be infinite along the corresponding principal axis.
+    #[cfg(feature = "dim2")]
+    pub fn rbInvPrincipalInertiaSqrt(&self, handle: FlatHandle) -> f32 {
+        self.map(handle, |rb| {
+            rb.mass_properties()
+                .local_mprops
+                .inv_principal_inertia_sqrt
+                .into()
+        })
+    }
+
+    /// The inverse of the principal angular inertia of the rigid-body.
+    ///
+    /// Components set to zero are assumed to be infinite along the corresponding principal axis.
+    #[cfg(feature = "dim3")]
+    pub fn rbInvPrincipalInertiaSqrt(&self, handle: FlatHandle) -> RawVector {
+        self.map(handle, |rb| {
+            rb.mass_properties()
+                .local_mprops
+                .inv_principal_inertia_sqrt
+                .into()
+        })
+    }
+
+    #[cfg(feature = "dim3")]
+    /// The principal vectors of the local angular inertia tensor of the rigid-body.
+    pub fn rbPrincipalInertiaLocalFrame(&self, handle: FlatHandle) -> RawRotation {
+        self.map(handle, |rb| {
+            RawRotation::from(
+                rb.mass_properties()
+                    .local_mprops
+                    .principal_inertia_local_frame,
+            )
+        })
+    }
+
+    /// The angular inertia along the principal inertia axes of the rigid-body.
+    #[cfg(feature = "dim2")]
+    pub fn rbPrincipalInertia(&self, handle: FlatHandle) -> f32 {
+        self.map(handle, |rb| {
+            rb.mass_properties().local_mprops.principal_inertia().into()
+        })
+    }
+
+    /// The angular inertia along the principal inertia axes of the rigid-body.
+    #[cfg(feature = "dim3")]
+    pub fn rbPrincipalInertia(&self, handle: FlatHandle) -> RawVector {
+        self.map(handle, |rb| {
+            rb.mass_properties().local_mprops.principal_inertia().into()
+        })
+    }
+
+    /// The square-root of the world-space inverse angular inertia tensor of the rigid-body,
+    /// taking into account rotation locking.
+    #[cfg(feature = "dim2")]
+    pub fn rbEffectiveWorldInvInertiaSqrt(&self, handle: FlatHandle) -> f32 {
+        self.map(handle, |rb| {
+            rb.mass_properties().effective_world_inv_inertia_sqrt.into()
+        })
+    }
+
+    /// The square-root of the world-space inverse angular inertia tensor of the rigid-body,
+    /// taking into account rotation locking.
+    #[cfg(feature = "dim3")]
+    pub fn rbEffectiveWorldInvInertiaSqrt(&self, handle: FlatHandle) -> RawSdpMatrix3 {
+        self.map(handle, |rb| {
+            rb.mass_properties().effective_world_inv_inertia_sqrt.into()
+        })
+    }
+
+    /// The effective world-space angular inertia (that takes the potential rotation locking into account) of
+    /// this rigid-body.
+    #[cfg(feature = "dim2")]
+    pub fn rbEffectiveAngularInertia(&self, handle: FlatHandle) -> f32 {
+        self.map(handle, |rb| {
+            rb.mass_properties().effective_angular_inertia().into()
+        })
+    }
+
+    /// The effective world-space angular inertia (that takes the potential rotation locking into account) of
+    /// this rigid-body.
+    #[cfg(feature = "dim3")]
+    pub fn rbEffectiveAngularInertia(&self, handle: FlatHandle) -> RawSdpMatrix3 {
+        self.map(handle, |rb| {
+            rb.mass_properties().effective_angular_inertia().into()
+        })
     }
 
     /// Wakes this rigid-body up.
@@ -341,8 +513,8 @@ impl RawRigidBodySet {
     }
 
     /// Set a new status for this rigid-body: fixed, dynamic, or kinematic.
-    pub fn rbSetBodyType(&mut self, handle: FlatHandle, status: RawRigidBodyType) {
-        self.map_mut(handle, |rb| rb.set_body_type(status.into()));
+    pub fn rbSetBodyType(&mut self, handle: FlatHandle, status: RawRigidBodyType, wake_up: bool) {
+        self.map_mut(handle, |rb| rb.set_body_type(status.into(), wake_up));
     }
 
     /// Is this rigid-body fixed?
@@ -376,6 +548,14 @@ impl RawRigidBodySet {
 
     pub fn rbSetAngularDamping(&mut self, handle: FlatHandle, factor: f32) {
         self.map_mut(handle, |rb| rb.set_angular_damping(factor));
+    }
+
+    pub fn rbSetEnabled(&mut self, handle: FlatHandle, enabled: bool) {
+        self.map_mut(handle, |rb| rb.set_enabled(enabled))
+    }
+
+    pub fn rbIsEnabled(&self, handle: FlatHandle) -> bool {
+        self.map(handle, |rb| rb.is_enabled())
     }
 
     pub fn rbGravityScale(&self, handle: FlatHandle) -> f32 {

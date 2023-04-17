@@ -4,7 +4,8 @@ use crate::math::{RawRotation, RawVector};
 use na::DMatrix;
 #[cfg(feature = "dim2")]
 use na::DVector;
-use rapier::geometry::{Shape, SharedShape};
+use na::Unit;
+use rapier::geometry::{Shape, SharedShape, TriMeshFlags};
 use rapier::math::{Isometry, Point, Real, Vector, DIM};
 use rapier::parry::query;
 use rapier::parry::query::Ray;
@@ -19,6 +20,7 @@ pub trait SharedShapeUtility {
         shapePos2: &Isometry<Real>,
         shapeVel2: &Vector<Real>,
         maxToi: f32,
+        stop_at_penetration: bool,
     ) -> Option<RawShapeTOI>;
 
     fn intersectsShape(
@@ -82,9 +84,17 @@ impl SharedShapeUtility for SharedShape {
         shapePos2: &Isometry<Real>,
         shapeVel2: &Vector<Real>,
         maxToi: f32,
+        stop_at_penetration: bool,
     ) -> Option<RawShapeTOI> {
         query::time_of_impact(
-            shapePos1, shapeVel1, &*self.0, shapePos2, &shapeVel2, shape2, maxToi,
+            shapePos1,
+            shapeVel1,
+            &*self.0,
+            shapePos2,
+            &shapeVel2,
+            shape2,
+            maxToi,
+            stop_at_penetration,
         )
         .ok()
         .flatten()
@@ -180,6 +190,7 @@ pub enum RawShapeType {
     RoundCuboid = 10,
     RoundTriangle = 11,
     RoundConvexPolygon = 12,
+    HalfSpace = 13,
 }
 
 #[wasm_bindgen]
@@ -202,6 +213,7 @@ pub enum RawShapeType {
     RoundCylinder = 14,
     RoundCone = 15,
     RoundConvexPolyhedron = 16,
+    HalfSpace = 17,
 }
 
 #[wasm_bindgen]
@@ -231,6 +243,10 @@ impl RawShape {
 
     pub fn ball(radius: f32) -> Self {
         Self(SharedShape::ball(radius))
+    }
+
+    pub fn halfspace(normal: &RawVector) -> Self {
+        Self(SharedShape::halfspace(Unit::new_normalize(normal.0)))
     }
 
     pub fn capsule(halfHeight: f32, radius: f32) -> Self {
@@ -276,7 +292,16 @@ impl RawShape {
     pub fn trimesh(vertices: Vec<f32>, indices: Vec<u32>) -> Self {
         let vertices = vertices.chunks(DIM).map(|v| Point::from_slice(v)).collect();
         let indices = indices.chunks(3).map(|v| [v[0], v[1], v[2]]).collect();
-        Self(SharedShape::trimesh(vertices, indices))
+        // NOTE: for the JS bindings, let’s just assume that the triangle mesh isn’t necessarily
+        // clean. We could provide more flexibility by allowing other flags to be given, but
+        // the API surface of the JS trimesh doesn’t really allow to benefit from other flags.
+        // So, let’s just keep MERGE_DUPLICATE_VERTICES which is useful to avoid internal edge
+        // problems.
+        Self(SharedShape::trimesh_with_flags(
+            vertices,
+            indices,
+            TriMeshFlags::MERGE_DUPLICATE_VERTICES,
+        ))
     }
 
     #[cfg(feature = "dim2")]
@@ -363,12 +388,20 @@ impl RawShape {
         shapeRot2: &RawRotation,
         shapeVel2: &RawVector,
         maxToi: f32,
+        stop_at_penetration: bool,
     ) -> Option<RawShapeTOI> {
         let pos1 = Isometry::from_parts(shapePos1.0.into(), shapeRot1.0);
         let pos2 = Isometry::from_parts(shapePos2.0.into(), shapeRot2.0);
 
-        self.0
-            .castShape(&pos1, &shapeVel1.0, &*shape2.0, &pos2, &shapeVel2.0, maxToi)
+        self.0.castShape(
+            &pos1,
+            &shapeVel1.0,
+            &*shape2.0,
+            &pos2,
+            &shapeVel2.0,
+            maxToi,
+            stop_at_penetration,
+        )
     }
 
     pub fn intersectsShape(

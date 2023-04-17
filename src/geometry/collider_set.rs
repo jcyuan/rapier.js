@@ -5,6 +5,13 @@ use crate::utils::{self, FlatHandle};
 use rapier::prelude::*;
 use wasm_bindgen::prelude::*;
 
+// NOTE: this MUST match the same enum on the TS side.
+enum MassPropsMode {
+    Density = 0,
+    Mass,
+    MassProps,
+}
+
 #[wasm_bindgen]
 pub struct RawColliderSet(pub(crate) ColliderSet);
 
@@ -35,10 +42,11 @@ impl RawColliderSet {
     // for the method arguments.
     pub fn do_create_collider(
         &mut self,
+        enabled: bool,
         shape: &RawShape,
         translation: &RawVector,
         rotation: &RawRotation,
-        useMassProps: bool,
+        massPropsMode: u32,
         mass: f32,
         centerOfMass: &RawVector,
         #[cfg(feature = "dim2")] principalAngularInertia: f32,
@@ -55,12 +63,14 @@ impl RawColliderSet {
         activeCollisionTypes: u16,
         activeHooks: u32,
         activeEvents: u32,
+        contactForceEventThreshold: f32,
         hasParent: bool,
         parent: FlatHandle,
         bodies: &mut RawRigidBodySet,
     ) -> Option<FlatHandle> {
         let pos = Isometry::from_parts(translation.0.into(), rotation.0);
         let mut builder = ColliderBuilder::new(shape.0.clone())
+            .enabled(enabled)
             .position(pos)
             .friction(friction)
             .restitution(restitution)
@@ -74,9 +84,10 @@ impl RawColliderSet {
             )
             .sensor(isSensor)
             .friction_combine_rule(super::combine_rule_from_u32(frictionCombineRule))
-            .restitution_combine_rule(super::combine_rule_from_u32(restitutionCombineRule));
+            .restitution_combine_rule(super::combine_rule_from_u32(restitutionCombineRule))
+            .contact_force_event_threshold(contactForceEventThreshold);
 
-        if useMassProps {
+        if massPropsMode == MassPropsMode::MassProps as u32 {
             #[cfg(feature = "dim2")]
             let mprops = MassProperties::new(centerOfMass.0.into(), mass, principalAngularInertia);
             #[cfg(feature = "dim3")]
@@ -87,9 +98,12 @@ impl RawColliderSet {
                 angularInertiaFrame.0,
             );
             builder = builder.mass_properties(mprops);
-        } else {
+        } else if massPropsMode == MassPropsMode::Density as u32 {
             builder = builder.density(density);
-        }
+        } else {
+            assert_eq!(massPropsMode, MassPropsMode::Mass as u32);
+            builder = builder.mass(mass);
+        };
 
         let collider = builder.build();
 
@@ -123,10 +137,11 @@ impl RawColliderSet {
     #[cfg(feature = "dim2")]
     pub fn createCollider(
         &mut self,
+        enabled: bool,
         shape: &RawShape,
         translation: &RawVector,
         rotation: &RawRotation,
-        useMassProps: bool,
+        massPropsMode: u32,
         mass: f32,
         centerOfMass: &RawVector,
         principalAngularInertia: f32,
@@ -141,15 +156,17 @@ impl RawColliderSet {
         activeCollisionTypes: u16,
         activeHooks: u32,
         activeEvents: u32,
+        contactForceEventThreshold: f32,
         hasParent: bool,
         parent: FlatHandle,
         bodies: &mut RawRigidBodySet,
     ) -> Option<FlatHandle> {
         self.do_create_collider(
+            enabled,
             shape,
             translation,
             rotation,
-            useMassProps,
+            massPropsMode,
             mass,
             centerOfMass,
             principalAngularInertia,
@@ -164,6 +181,7 @@ impl RawColliderSet {
             activeCollisionTypes,
             activeHooks,
             activeEvents,
+            contactForceEventThreshold,
             hasParent,
             parent,
             bodies,
@@ -173,10 +191,11 @@ impl RawColliderSet {
     #[cfg(feature = "dim3")]
     pub fn createCollider(
         &mut self,
+        enabled: bool,
         shape: &RawShape,
         translation: &RawVector,
         rotation: &RawRotation,
-        useMassProps: bool,
+        massPropsMode: u32,
         mass: f32,
         centerOfMass: &RawVector,
         principalAngularInertia: &RawVector,
@@ -192,15 +211,17 @@ impl RawColliderSet {
         activeCollisionTypes: u16,
         activeHooks: u32,
         activeEvents: u32,
+        contactForceEventThreshold: f32,
         hasParent: bool,
         parent: FlatHandle,
         bodies: &mut RawRigidBodySet,
     ) -> Option<FlatHandle> {
         self.do_create_collider(
+            enabled,
             shape,
             translation,
             rotation,
-            useMassProps,
+            massPropsMode,
             mass,
             centerOfMass,
             principalAngularInertia,
@@ -216,6 +237,7 @@ impl RawColliderSet {
             activeCollisionTypes,
             activeHooks,
             activeEvents,
+            contactForceEventThreshold,
             hasParent,
             parent,
             bodies,

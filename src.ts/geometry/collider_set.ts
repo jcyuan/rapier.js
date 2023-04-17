@@ -19,9 +19,14 @@ export class ColliderSet {
      * Release the WASM memory occupied by this collider set.
      */
     public free() {
-        this.raw.free();
+        if (!!this.raw) {
+            this.raw.free();
+        }
         this.raw = undefined;
-        this.map.clear();
+
+        if (!!this.map) {
+            this.map.clear();
+        }
         this.map = undefined;
     }
 
@@ -34,6 +39,19 @@ export class ColliderSet {
                 this.map.set(handle, new Collider(this, handle, null));
             });
         }
+    }
+
+    /** @internal */
+    public castClosure<Res>(
+        f?: (collider: Collider) => Res,
+    ): (handle: ColliderHandle) => Res | undefined {
+        return (handle) => {
+            if (!!f) {
+                return f(this.get(handle));
+            } else {
+                return undefined;
+            }
+        };
     }
 
     /** @internal */
@@ -77,10 +95,11 @@ export class ColliderSet {
         // #endif
 
         let handle = this.raw.createCollider(
+            desc.enabled,
             rawShape,
             rawTra,
             rawRot,
-            desc.useMassProps,
+            desc.massPropsMode,
             desc.mass,
             rawCom,
             // #if DIM2
@@ -101,6 +120,7 @@ export class ColliderSet {
             desc.activeCollisionTypes,
             desc.activeHooks,
             desc.activeEvents,
+            desc.contactForceEventThreshold,
             hasParent,
             hasParent ? parentHandle : 0,
             bodies.raw,
